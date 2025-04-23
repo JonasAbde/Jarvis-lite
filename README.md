@@ -1,26 +1,66 @@
-# Jarvis-lite
-Eksamensprojekt – AI-assistent i Python og Jupyter af Jonas, David, Elmedin og Mirac.
-# Jarvis Lite – AI-assistent (ITEK-F24V)
+# Jarvis Lite 🤖
 
-Jarvis Lite er en personlig AI-assistent bygget i Python og Jupyter Notebook.
-Projektet er udviklet som eksamensprojekt i faget *Kunstig Intelligens i praksis* på IBA / EAAA.
+En simpel personlig assistent udviklet af studerende på 2. semester i faget "Kunstig intelligens i praksis (ITEK-F24V)".
 
-## Gruppe:
+## 👥 Gruppemedlemmer
 - Jonas Abde
 - David Bashar Al-Basi
 - Elmedin Babajic
 - Mirac Dinc
 
-## Funktioner:
-- Stemmesvar via pyttsx3
-- Åbner websites
-- Gemmer noter
-- Simpelt input/output og beslutningslogik
+## 🚀 Funktioner
+- Fortæller hvad klokken er ⏰
+- Åbner hjemmesider 🌐
+- Gemmer noter 📝
+- Motiverer brugeren 💪
 
-## Teknologier:
+## 📋 Installation
+1. Klon dette repository
+2. Installer de nødvendige pakker:
+```bash
+pip install -r requirements.txt
+```
+
+## 💻 Brug
+1. Åbn `notebooks/JarvisLiteDemo.ipynb` i Jupyter Notebook
+2. Følg instruktionerne i notebook'en
+3. Prøv forskellige kommandoer som:
+   - "Hvad er klokken?"
+   - "Åbn google.com"
+   - "Gem Husk at lave lektier"
+   - "Motiver mig"
+   - "Vis mine noter"
+
+## 🏗️ Projektstruktur
+```
+Jarvis-Lite/
+├── README.md
+├── requirements.txt
+├── notebooks/
+│   └── JarvisLiteDemo.ipynb
+├── src/
+│   ├── jarvis_core.py
+│   ├── jarvis_commands.py
+│   └── jarvis_voice.py
+├── data/
+│   └── notes.txt
+```
+
+## 📚 Teknologier
 - Python 3
 - Jupyter Notebook
-- pyttsx3, datetime, webbrowser
+- pyttsx3 (text-to-speech)
+- webbrowser
+- datetime
+- file I/O
 
-## Licens:
-MIT
+## 📝 Noter
+- Noter gemmes i `data/notes.txt`
+- Systemet bruger dansk tale, hvis tilgængeligt
+- Alle fejl håndteres elegant med brugervenlige fejlmeddelelser
+
+## 🤝 Bidrag
+Dette projekt er udviklet som en del af undervisningen og er ikke åben for eksterne bidrag.
+
+## 📄 Licens
+Dette projekt er licenseret under MIT License - se [LICENSE](LICENSE) filen for detaljer.
