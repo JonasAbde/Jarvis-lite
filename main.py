@@ -1,5 +1,19 @@
 import sys
 import os
+import threading
+import time
+
+# Monkey-patch scipy.signal for DanSpeech compatibility
+import scipy.signal
+from scipy.signal import windows as _win
+
+# Recreate the old window functions
+scipy.signal.hamming   = _win.hamming
+scipy.signal.hann      = _win.hann
+scipy.signal.blackman  = _win.blackman
+scipy.signal.bartlett  = _win.bartlett
+scipy.signal.flattop   = _win.flattop
+scipy.signal.kaiser    = _win.kaiser
 
 # Tilføj projektets rodmappe til Python-stien
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +28,8 @@ def check_requirements():
     required_files = [
         'src/jarvis_core.py',
         'src/jarvis_commands.py',
-        'src/jarvis_voice.py'
+        'src/jarvis_voice.py',
+        'src/danspeech_voice.py'
     ]
     
     # Tjek mapper
@@ -30,6 +45,23 @@ def check_requirements():
             return False
     
     return True
+
+def listen_for_commands(jarvis):
+    """Lyt efter stemmekommandoer"""
+    while True:
+        try:
+            # Hent den sidst genkendte tekst
+            command = jarvis.voice.get_last_recognized_text()
+            if command:
+                print(f"\nGenkendt kommando: {command}")
+                response = jarvis.handle_command(command)
+                print(f"\nJarvis: {response}")
+                jarvis.voice.clear_last_recognized_text()
+            time.sleep(0.1)
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"\n❌ Fejl under lytning: {str(e)}")
 
 def main():
     """Hovedfunktion der starter Jarvis Lite"""
@@ -57,29 +89,31 @@ def main():
         # Test stemmen ved opstart
         jarvis.voice.speak("Hej! Jeg er klar til at hjælpe dig!")
         
+        # Start lytning efter stemmekommandoer
+        jarvis.voice.start_listening()
+        listen_thread = threading.Thread(target=listen_for_commands, args=(jarvis,))
+        listen_thread.daemon = True
+        listen_thread.start()
+        
         while True:
             try:
                 command = input("\nHvad kan jeg hjælpe dig med? > ")
-                
-                if command.lower() == "afslut":
-                    print("Farvel! Tak fordi du brugte Jarvis Lite! 👋")
-                    jarvis.voice.speak("Farvel! På gensyn!")
+                if command.lower() == 'afslut':
+                    print("\nFarvel! Tak for denne gang.")
                     break
-                    
                 response = jarvis.handle_command(command)
                 print(f"\nJarvis: {response}")
-                
             except KeyboardInterrupt:
-                print("\n\nFarvel! Tak fordi du brugte Jarvis Lite! 👋")
-                jarvis.voice.speak("Farvel! På gensyn!")
+                print("\nFarvel! Tak for denne gang.")
                 break
             except Exception as e:
-                print(f"\n❌ Der opstod en fejl: {str(e)}")
-                print("Prøv igen eller skriv 'afslut' for at lukke programmet")
-                
+                print(f"\n❌ Fejl: {str(e)}")
+        
     except Exception as e:
-        print(f"\n❌ Kritisk fejl: {str(e)}")
-        print("Kontakt venligst en administrator")
+        print(f"\n❌ Fejl under opstart: {str(e)}")
+    finally:
+        if 'jarvis' in locals():
+            jarvis.voice.stop_listening()
 
 if __name__ == "__main__":
     main() 
