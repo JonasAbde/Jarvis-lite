@@ -1,0 +1,12 @@
+# Konfigurationseksempel
+
+hardware:
+  led_pin: 15
+  lcd_address: 0x27
+  button_pin: 12
+mode: auto  # auto, pc, eller pi
+plugins:
+  - notes
+  - lights
+  - web
+  - log
