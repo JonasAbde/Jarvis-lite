@@ -1,9 +1,0 @@
-flask
-pyttsx3
-speechrecognition
-streamlit
-pyaudio
-danspeech
-torch
-numpy
-pyyaml

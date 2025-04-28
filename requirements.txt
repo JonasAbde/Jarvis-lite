@@ -1,5 +1,15 @@
-tensorflow
-numpy
-gtts
+SpeechRecognition==3.14.2
+PyAudio==0.2.14
+whisper
+numpy==2.2.5
+soundfile==0.13.1
+gtts==2.5.4
 playsound==1.2.2
-jupyter
+requests
+librosa==0.11.0
+scikit-learn==1.6.1
+sounddevice==0.5.1
+joblib==1.4.2
+torch
+pyttsx3
+simpleaudio; platform_system == "Linux" or platform_system == "Darwin"
