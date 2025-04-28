@@ -2,54 +2,45 @@ import os
 import time
 import wave
 import pyaudio
-import whisper
 import numpy as np
-import soundfile as sf
-from gtts import gTTS
-from playsound import playsound
-import requests
+import datetime
+import webbrowser
 import json
+import requests
+import whisper
+from gtts import gTTS
+import playsound
+import traceback
+import librosa
+#import torch # Ikke længere direkte nødvendigt her
+import uuid
 
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    print("OpenAI biblioteket er ikke installeret. Avancerede svar vil ikke være tilgængelige.")
-
-# --- Gemini API-nøgle (valgfri) ---
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAT8iLM_K7kBPBxhj303XguBzLe1Gh-qOU")
-if not GEMINI_API_KEY:
-    print("Advarsel: Gemini API-nøgle ikke fundet. Sæt den som miljøvariabel 'GEMINI_API_KEY' for intelligente svar.")
-
-# --- Whisper opsætning ---
-print("Indlæser Whisper sprogmodel...")
-whisper_model = whisper.load_model("base")
-print("Whisper model indlæst!")
-
-# --- Lydoptagelse ---
-CHUNK = 1024
+# Globale variabler
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 44100
+RATE = 16000
+CHUNK = 1024
+TEMP_WAV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_recording.wav")
+NOTES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "noter.txt")
+TEMP_MP3_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_response_")
 
-# --- Midlertidig fil til lyd ---
-TEMP_WAV = "temp_recording.wav"
-
-# --- Samtalehistorik ---
-conversation_history = []
+# Gem reference til Whisper model globalt så den kun indlæses én gang
+print("Indlæser Whisper sprogmodel ('small')...") # Skiftet tilbage til 'small'
+whisper_model = whisper.load_model("small")
+print("Whisper 'small' model indlæst!")
 
 def record_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-    print("Jarvis lytter...")
+    print("Jarvis lytter... (Sig noget eller tryk Ctrl+C for at stoppe)")
     frames = []
-    silence_threshold = 400  # Sænk tærsklen for stilhedsdetektion
+    silence_threshold = 200 # Sænket fra 400
     silence_chunks = 0
-    max_silence_chunks = int(5 * RATE / CHUNK)  # Forlæng til 5 sekunder stilhed før afslutning
-    max_recording_chunks = int(30 * RATE / CHUNK)  # Maks 30 sekunder optagelse
+    max_silence_chunks = int(4 * RATE / CHUNK)  # 4 sekunders stilhed før stop
+    max_recording_chunks = int(20 * RATE / CHUNK)  # Max 20 sekunder optagelse
     chunk_count = 0
     listening = True
+    max_amplitude_seen = 0
 
     try:
         while listening:
@@ -57,136 +48,301 @@ def record_audio():
             frames.append(data)
             chunk_count += 1
             audio_data = np.frombuffer(data, dtype=np.int16)
-            amplitude = np.abs(audio_data).mean()
-            print(f"Amplitude: {amplitude:.2f}")  # Fejlsøgningslogning
-            if amplitude < silence_threshold:
+            # Udregn både gennemsnit og max rå værdi
+            amplitude_mean = np.abs(audio_data).mean()
+            amplitude_max_raw = np.abs(audio_data).max() if len(audio_data) > 0 else 0
+            max_amplitude_seen = max(max_amplitude_seen, amplitude_mean) # Beholder gennemsnit her
+            
+            # Log max rå værdi for at se om der overhovedet er signal
+            if chunk_count < 10 or chunk_count % 20 == 0: # Log lidt i starten og periodisk
+                print(f"Lytter... (chunk {chunk_count}, mean_amp: {amplitude_mean:.2f}, max_raw: {amplitude_max_raw})")
+                
+            if amplitude_mean < silence_threshold:
                 silence_chunks += 1
                 if silence_chunks > max_silence_chunks:
-                    print("Stilhed detekteret, afslutter optagelse.")
+                    # print(f"Stilhed detekteret i {silence_chunks} chunks, afslutter optagelse.")
                     listening = False
             else:
+                # if silence_chunks > 10:
+                #     print(f"*** Lyd detekteret igen (amplitude: {amplitude_mean:.2f}) ***")
                 silence_chunks = 0
+                
             if chunk_count > max_recording_chunks:
-                print("Maksimal optagetid nået, afslutter optagelse.")
+                # print("Maksimal optagetid nået, afslutter optagelse.")
                 listening = False
     except KeyboardInterrupt:
-        print("Afbrudt af bruger.")
+        print("Optagelse afbrudt af bruger.")
         listening = False
     finally:
-        print("Lytning afsluttet!")
+        print(f"Lytning afsluttet! Optog {chunk_count} chunks. Max amplitude: {max_amplitude_seen:.2f}")
         stream.stop_stream()
         stream.close()
         p.terminate()
-        if len(frames) > 0:
+        
+        if not frames:
+            print("Ingen lyd optaget.")
+            return None
+            
+        try:
             wf = wave.open(TEMP_WAV, 'wb')
             wf.setnchannels(CHANNELS)
             wf.setsampwidth(p.get_sample_size(FORMAT))
             wf.setframerate(RATE)
             wf.writeframes(b''.join(frames))
             wf.close()
-            print(f"Lyd gemt som {TEMP_WAV}, størrelse: {os.path.getsize(TEMP_WAV)} bytes")
-            return TEMP_WAV
-        print("Ingen lyd optaget.")
-        return None
+            
+            if os.path.exists(TEMP_WAV):
+                size = os.path.getsize(TEMP_WAV)
+                print(f"Lyd gemt midlertidigt i {TEMP_WAV} ({size} bytes)")
+                return TEMP_WAV
+            else:
+                print(f"Fejl: Kunne ikke finde den gemte lydfil {TEMP_WAV}")
+                return None
+        except Exception as e:
+            print(f"Fejl ved skrivning af lydfil: {e}")
+            return None
 
-def recognize_speech_with_whisper(audio_path):
-    if not os.path.exists(audio_path):
-        print(f"Fejl: Lydfilen {audio_path} findes ikke.")
+def transcribe_audio(audio_path):
+    # 1) Tjek om filen eksisterer
+    if not audio_path or not os.path.exists(audio_path):
+        print(f"Fejl: Transskriptionsinput '{audio_path}' er ugyldigt.")
         return ""
+
     try:
-        print(f"Forsøger at transskribere {audio_path}...")
-        audio = whisper.load_audio(audio_path)
-        print("Lyd indlæst til transskription.")
-        audio = whisper.pad_or_trim(audio)
-        mel = whisper.log_mel_spectrogram(audio).to(whisper_model.device)
-        options = whisper.DecodingOptions(language="da")
-        result = whisper.decode(whisper_model, mel, options)
-        print(f"Transskription færdig: {result.text}")
-        return result.text
+        print(f"Indlæser og transskriberer {audio_path}...")
+        start_time = time.time()
+        
+        # 2) Indlæs lyd som NumPy-array (16000 Hz)
+        audio_data, sr = librosa.load(audio_path, sr=16000, mono=True)
+        load_time = time.time()
+        print(f" - Lyd indlæst ({len(audio_data)} samples, {sr}Hz) på {load_time - start_time:.2f}s")
+        
+        # 3) Tjek om lyd er lang nok (>0.5 sek)
+        min_length_samples = int(0.5 * sr)
+        if len(audio_data) < min_length_samples:
+            print(f" - Optagelsen er for kort ({len(audio_data)} samples < {min_length_samples} samples), prøv igen.")
+            # Slet filen, da den er ubrugelig
+            try:
+                os.remove(audio_path)
+                print(f" - Midlertidig lydfil {audio_path} slettet (for kort).")
+            except OSError as e:
+                print(f" - Fejl ved sletning af for kort lydfil: {e}")
+            return ""
+
+        # Normaliser lydstyrken
+        audio_data = librosa.util.normalize(audio_data)
+
+        # 4) Udfør transskription og mål tid
+        print(f" - Starter Whisper transskription...")
+        start_transcribe_time = time.time()
+        # Sørg for at lyd data er i korrekt format (float32 numpy array)
+        audio_np = audio_data.astype(np.float32)
+        # Transskriber med Whisper - TILFØJET language='da'
+        result = whisper_model.transcribe(audio_np, language="da", fp16=False) # fp16=False for CPU
+        end_transcribe_time = time.time()
+        transcription = result["text"].strip()
+        print(f"Transskription færdig på {end_transcribe_time - start_transcribe_time:.2f}s (Total: {end_transcribe_time - start_time:.2f}s): '{transcription}'")
+
+        # 6) Ryd op (slet midlertidig fil) - genaktiveret
+        try:
+            os.remove(audio_path)
+            print(f"Midlertidig lydfil {audio_path} slettet.")
+        except OSError as e:
+            print(f"Fejl ved sletning af midlertidig lydfil: {e}")
+            
+        return transcription
+
     except Exception as e:
-        print(f"Fejl ved brug af Whisper: {e}")
+        print(f"Fejl under transskribering af {audio_path}: {e}")
+        print(traceback.format_exc())
+        # Forsøg at rydde op selv ved fejl
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                print(f"Midlertidig lydfil {audio_path} slettet efter fejl.")
+            except OSError:
+                pass # Ignorer fejl under oprydning
         return ""
 
 def speak(text, lang="da"):
-    print(f"Jarvis siger: {text}")
-    tts_file = "jarvis_response.mp3"
-    tts = gTTS(text=text, lang=lang)
-    tts.save(tts_file)
+    response_mp3 = None  # Initialiser filnavn
     try:
-        playsound(tts_file)
-    except Exception as e:
-        print(f"Fejl ved afspilning: {e}")
-    finally:
+        print(f"Jarvis siger: {text}")
+        
+        # Opret et unikt filnavn for hver TTS-response ved hjælp af uuid
+        unique_id = uuid.uuid4()
+        response_mp3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"jarvis_response_{unique_id}.mp3")
+        
+        # Generer og gem lydklip
+        tts = gTTS(text=text, lang=lang, slow=False)
+        tts.save(response_mp3)
+        print(f"Lydfil gemt til: {response_mp3}") # Tilføjet print for at se det unikke navn
+        
         try:
-            os.remove(tts_file)
+            # Afspil lydklip
+            playsound.playsound(response_mp3)
+            print(f"Lydklip afspillet")
         except Exception as e:
-            print(f"Kunne ikke slette midlertidig fil: {e}")
+            print(f"Fejl ved afspilning: {e}")
+        
+    except Exception as e:
+        print(f"Fejl ved tekst-til-tale konvertering: {e}")
+        print(traceback.format_exc())
+    finally:
+        # Slet altid filen, hvis den blev oprettet, uanset om afspilning lykkedes
+        if response_mp3 and os.path.exists(response_mp3):
+            try:
+                # Vent et kort øjeblik for at give OS tid til at frigive filen
+                time.sleep(0.5)
+                os.remove(response_mp3)
+                print(f"Midlertidig lydfil {os.path.basename(response_mp3)} slettet")
+            except Exception as e:
+                print(f"Kunne ikke slette lydfil {os.path.basename(response_mp3)}: {e}")
+                # Ikke kritisk, fortsæt
+
+def extract_website_name(text):
+    """Forsøger at udtrække et websitenavn fra teksten."""
+    if "google" in text.lower():
+        return "google.com"
+    elif "youtube" in text.lower():
+        return "youtube.com"
+    
+    # Tjek for .com, .dk etc.
+    words = text.split()
+    for word in words:
+        word = word.lower()
+        if word.endswith(".com") or word.endswith(".dk") or word.endswith(".org"):
+            return word
+    return None
 
 def get_gemini_response(text):
-    if not GEMINI_API_KEY:
-        return "Jeg kan ikke svare intelligent, da Gemini API-nøglen ikke er sat."
+    """Få et intelligent svar fra Gemini API hvis tilgængeligt"""
+    api_key = os.environ.get('GEMINI_API_KEY', None)
+    
+    if not api_key:
+        return "Jeg forstår ikke, hvad du mener med \"{}\"? Kan du omformulere dit spørgsmål?".format(text)
+    
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-        headers = {'Content-Type': 'application/json'}
-        # Byg samtalehistorik til prompten
-        history_text = "Samtalehistorik:\n"
-        for entry in conversation_history[-5:]:  # Begræns til de sidste 5 interaktioner
-            history_text += f"Bruger: {entry['user']}\nJarvis: {entry['jarvis']}\n"
-        prompt = f"Du er Jarvis, en hjælpsom AI-assistent. Svar kort og præcist på dansk. Brug samtalehistorikken til at give relevante svar:\n{history_text}\nBruger: {text}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+        
         data = {
             "contents": [{
-                "parts": [{"text": prompt}]
+                "parts": [{
+                    "text": f"Besvar dette spørgsmål kort og præcist på dansk: {text}"
+                }]
             }]
         }
-        response = requests.post(url, headers=headers, json=data)
-        response_json = response.json()
-        if 'candidates' in response_json and len(response_json['candidates']) > 0:
-            answer = response_json['candidates'][0]['content']['parts'][0]['text']
-            # Opdater samtalehistorik
-            conversation_history.append({"user": text, "jarvis": answer})
-            return answer
-        else:
-            return "Jeg kunne ikke få et svar fra Gemini API."
+        
+        response = requests.post(url, json=data)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            if "candidates" in response_data and len(response_data["candidates"]) > 0:
+                if "content" in response_data["candidates"][0]:
+                    content = response_data["candidates"][0]["content"]
+                    if "parts" in content and len(content["parts"]) > 0:
+                        return content["parts"][0]["text"]
+        
+        return "Jeg forstår ikke spørgsmålet. Kan du omformulere det?"
     except Exception as e:
-        print(f"Fejl ved Gemini API: {e}")
-        return "Jeg kunne ikke få et intelligent svar fra Gemini."
+        print(f"Fejl ved Gemini API kald: {e}")
+        return "Jeg kan ikke svare på det lige nu på grund af en teknisk fejl."
+
+def handle_command(command):
+    command = command.lower().strip()
+    if "hjælp" in command or "hvad kan du" in command:
+        return """Jeg kan:
+1. Vise klokken - prøv: 'hvad er klokken'
+2. Åbne hjemmesider - prøv: 'åbn google'
+3. Gemme noter - prøv: 'gem note husk at købe mælk'
+4. Svare på spørgsmål"""
+    elif "klokken" in command or "tid" in command:
+        current_time = datetime.datetime.now().strftime("%H:%M")
+        return f"Klokken er {current_time}."
+    elif "åbn" in command and ("google" in command or "youtube" in command or ".com" in command or ".dk" in command):
+        site = extract_website_name(command)
+        if site:
+            if not site.startswith("http"):
+                site = "https://" + site
+            webbrowser.open(site)
+            return f"Jeg åbner {site} for dig."
+        else:
+            return "Jeg forstod ikke, hvilken hjemmeside du ville åbne."
+    elif "gem" in command or "note" in command or "husk" in command:
+        # Fjern trigger-ordene først
+        note_content = command.replace("gem", "").replace("note", "").replace("husk", "").strip()
+        if note_content:
+            with open(NOTES_FILE, "a", encoding="utf-8") as f:
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                f.write(f"{timestamp}: {note_content}\n")
+            return f"Jeg har gemt noten: {note_content}"
+        else:
+            return "Jeg forstod ikke, hvad jeg skulle gemme som note."
+    elif "farvel" in command or "stop" in command or "sluk" in command:
+        return "farvel"
+    else:
+        return get_gemini_response(command)
 
 def main():
-    # Sørg for at data-mappe eksisterer
     os.makedirs("data", exist_ok=True)
-
-    print("Jarvis Lite er klar.")
+    # Ryd op i gamle temp mp3 filer ved start
+    cleanup_temp_files(TEMP_MP3_BASE, ".mp3")
+    
+    print("=== Jarvis Lite er klar! ===")
     speak("Jarvis Lite er aktiveret og klar til at hjælpe")
 
-    while True:
-        # 1. Optag lyd
-        wav_path = record_audio()
-        if not wav_path:
-            speak("Beklager, jeg hørte ikke noget.")
-            continue
+    try:
+        while True:
+            # 1. Optag lyd
+            audio_file_path = record_audio()
+            
+            if audio_file_path:
+                # 2. Transskriber lyden
+                user_input = transcribe_audio(audio_file_path)
+                
+                # 3. Håndter kommando hvis transskription lykkedes og ikke er tom
+                if user_input: 
+                    print(f"Bruger sagde: '{user_input}'") # Udskriv genkendt tekst
+                    handle_command(user_input)
+                else:
+                    # Hvis transkription fejlede eller var tom (f.eks. for kort optagelse)
+                    print("Ingen gyldig tekst genkendt. Prøv igen.")
+                    # Vi kan evt. afspille en lyd her, men undlader for nu
+                    # speak("Jeg opfattede ikke noget. Prøv igen.") 
+            else:
+                # Håndter hvis record_audio returnerede None (f.eks. ingen lyd optaget)
+                print("Ingen lyd blev optaget. Prøv igen.")
+                
+            # Kort pause for at undgå at loope for hurtigt ved fejl
+            # time.sleep(0.5)
 
-        # 2. Transskribér med Whisper direkte fra lyddata
-        text = recognize_speech_with_whisper(wav_path)
-
-        # Ryd op - slet midlertidig lydfil
-        try:
-            os.remove(wav_path)
+    except KeyboardInterrupt:
+        print("\nJarvis Lite lukkes ned via tastaturafbrydelse.")
+    finally:
+        print("Rydder op...")
+        # Sikrer at PyAudio lukkes hvis det ikke skete i record_audio
+        try: 
+            p = pyaudio.PyAudio()
+            p.terminate()
         except:
-            print(f"Kunne ikke slette midlertidig fil: {wav_path}")
+            pass
+        # Ryd op i eventuelle resterende temp-filer
+        cleanup_temp_files(TEMP_WAV, "") # Slet specifik wav fil hvis den stadig findes
+        cleanup_temp_files(TEMP_MP3_BASE, ".mp3")
+        print("Jarvis Lite er lukket ned.")
 
-        if not text:
-            speak("Beklager, jeg forstod ikke hvad du sagde.")
-            continue
-
-        print(f"Du sagde: {text}")
-
-        # 3. Få intelligent svar fra Gemini, hvis tilgængeligt
-        response = get_gemini_response(text)
-        speak(response)
-
-        if "farvel" in text or "stop" in text or "luk ned" in text:
-            speak("Farvel! Jarvis lukker ned.")
-            break
+# Funktion til at rydde op i midlertidige filer
+def cleanup_temp_files(basename, extension):
+    temp_dir = os.path.dirname(basename)
+    base = os.path.basename(basename)
+    for filename in os.listdir(temp_dir):
+        if filename.startswith(base) and filename.endswith(extension):
+            try:
+                filepath = os.path.join(temp_dir, filename)
+                os.remove(filepath)
+                # print(f"Slettede gammel temp-fil: {filepath}") # Gør det mindre støjende
+            except Exception as e:
+                print(f"Kunne ikke slette gammel temp-fil {filename}: {e}")
 
 if __name__ == "__main__":
     main()
