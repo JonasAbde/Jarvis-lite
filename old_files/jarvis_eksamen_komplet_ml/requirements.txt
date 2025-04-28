@@ -1,5 +1,0 @@
-tensorflow
-numpy
-gtts
-playsound==1.2.2
-jupyter
