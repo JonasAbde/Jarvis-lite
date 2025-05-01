@@ -14,6 +14,13 @@ import traceback
 import librosa
 #import torch # Ikke længere direkte nødvendigt her
 import uuid
+import joblib
+import json
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import keras
+import pickle
+from pathlib import Path
 
 # Globale variabler
 FORMAT = pyaudio.paInt16
@@ -24,10 +31,101 @@ TEMP_WAV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_record
 NOTES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "noter.txt")
 TEMP_MP3_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_response_")
 
-# Gem reference til Whisper model globalt så den kun indlæses én gang
-print("Indlæser Whisper sprogmodel ('small')...") # Skiftet tilbage til 'small'
-whisper_model = whisper.load_model("small")
-print("Whisper 'small' model indlæst!")
+# === Globale variabler for forudindlæste modeller ===
+whisper_model = None
+nlu_model = None
+nlu_vectorizer = None
+nn_model = None
+nn_tokenizer = None
+nn_le = None
+
+# === Funktion til at indlæse alle modeller én gang ===
+def load_all_models():
+    global whisper_model, nlu_model, nlu_vectorizer, nn_model, nn_tokenizer, nn_le
+    print("[INFO] Indlæser modeller...")
+    try:
+        try:
+            whisper_model = whisper.load_model("small", device="cuda")
+            print("[INFO] Whisper model ('small') indlæst på GPU (cuda).")
+        except Exception as e:
+            print(f"[ADVARSEL] Kunne ikke indlæse Whisper på GPU: {e}\nFalder tilbage til CPU...")
+            whisper_model = whisper.load_model("small", device="cpu")
+            print("[INFO] Whisper model ('small') indlæst på CPU.")
+    except Exception as e:
+        print(f"[FEJL] Kunne ikke indlæse Whisper model: {e}")
+
+    try:
+        nlu_model = joblib.load("models/nlu_model.joblib")
+        nlu_vectorizer = joblib.load("models/vectorizer.joblib")
+        print("[INFO] NLU model og vectorizer indlæst.")
+    except Exception as e:
+        print(f"[FEJL] Kunne ikke indlæse NLU model/vectorizer: {e}")
+
+    try:
+        nn_model = keras.models.load_model("models/nn_chatbot.h5")
+        with open("models/nn_tokenizer.pkl", "rb") as f:
+            nn_tokenizer = pickle.load(f)
+        with open("models/nn_labelencoder.pkl", "rb") as f:
+            nn_le = pickle.load(f)
+        print("[INFO] NN chatbot model, tokenizer og labelencoder indlæst.")
+    except Exception as e:
+        print(f"[FEJL] Kunne ikke indlæse NN chatbot model/data: {e}")
+    print("[INFO] Modelindlæsning færdig.")
+
+def predict_intent(text):
+    global nlu_model, nlu_vectorizer
+    if not nlu_model or not nlu_vectorizer:
+        print("[FEJL] NLU model eller vectorizer ikke indlæst!")
+        return None
+    try:
+        text_vec = nlu_vectorizer.transform([text])
+        prediction = nlu_model.predict(text_vec)
+        return prediction[0]
+    except Exception as e:
+        print(f"Fejl under NLU intent forudsigelse: {e}")
+        return None
+
+def transcribe_audio(file_path):
+    global whisper_model
+    if not whisper_model:
+        print("[FEJL] Whisper model ikke indlæst!")
+        return None
+    temp_path = Path(file_path).resolve()
+    print(f"Indlæser og transskriberer {temp_path}...")
+    if not temp_path.exists():
+        print(f"[FEJL] Lydfilen findes ikke: {temp_path}")
+        return None
+    start_time = time.time()
+    try:
+        try:
+            audio = whisper.load_audio(str(temp_path))
+            print(f" - Lyd indlæst med whisper.load_audio ({len(audio)} samples, 16000Hz) på {time.time() - start_time:.2f}s")
+        except Exception as e:
+            print(f"Kunne ikke indlæse med whisper.load_audio: {e}\nPrøver med librosa i stedet...")
+            audio, _ = librosa.load(str(temp_path), sr=16000, mono=True)
+            print(f" - Lyd indlæst med librosa ({len(audio)} samples, 16000Hz) på {time.time() - start_time:.2f}s")
+        result = whisper_model.transcribe(audio, language="da") # Brug global model
+        transcription = result["text"].strip()
+        print(f" - Transskription færdig på {time.time() - start_time:.2f}s: '{transcription}'")
+        return transcription
+    except Exception as e:
+        print(f"Fejl under transskription: {e}")
+        return None
+
+def nn_chatbot_response(user_input):
+    global nn_model, nn_tokenizer, nn_le
+    if not nn_model or not nn_tokenizer or not nn_le:
+        print("[FEJL] NN chatbot model/data ikke indlæst!")
+        return None
+    try:
+        seq = nn_tokenizer.texts_to_sequences([user_input])
+        seq = keras.preprocessing.sequence.pad_sequences(seq, maxlen=nn_model.input_shape[1], padding="post")
+        pred = nn_model.predict(seq, verbose=0)
+        idx = np.argmax(pred)
+        return nn_le.inverse_transform([idx])[0]
+    except Exception as e:
+        print(f"[NN-Chatbot fejl]: {e}")
+        return None
 
 def record_audio():
     p = pyaudio.PyAudio()
@@ -101,68 +199,6 @@ def record_audio():
         except Exception as e:
             print(f"Fejl ved skrivning af lydfil: {e}")
             return None
-
-def transcribe_audio(audio_path):
-    # 1) Tjek om filen eksisterer
-    if not audio_path or not os.path.exists(audio_path):
-        print(f"Fejl: Transskriptionsinput '{audio_path}' er ugyldigt.")
-        return ""
-
-    try:
-        print(f"Indlæser og transskriberer {audio_path}...")
-        start_time = time.time()
-        
-        # 2) Indlæs lyd som NumPy-array (16000 Hz)
-        audio_data, sr = librosa.load(audio_path, sr=16000, mono=True)
-        load_time = time.time()
-        print(f" - Lyd indlæst ({len(audio_data)} samples, {sr}Hz) på {load_time - start_time:.2f}s")
-        
-        # 3) Tjek om lyd er lang nok (>0.5 sek)
-        min_length_samples = int(0.5 * sr)
-        if len(audio_data) < min_length_samples:
-            print(f" - Optagelsen er for kort ({len(audio_data)} samples < {min_length_samples} samples), prøv igen.")
-            # Slet filen, da den er ubrugelig
-            try:
-                os.remove(audio_path)
-                print(f" - Midlertidig lydfil {audio_path} slettet (for kort).")
-            except OSError as e:
-                print(f" - Fejl ved sletning af for kort lydfil: {e}")
-            return ""
-
-        # Normaliser lydstyrken
-        audio_data = librosa.util.normalize(audio_data)
-
-        # 4) Udfør transskription og mål tid
-        print(f" - Starter Whisper transskription...")
-        start_transcribe_time = time.time()
-        # Sørg for at lyd data er i korrekt format (float32 numpy array)
-        audio_np = audio_data.astype(np.float32)
-        # Transskriber med Whisper - TILFØJET language='da'
-        result = whisper_model.transcribe(audio_np, language="da", fp16=False) # fp16=False for CPU
-        end_transcribe_time = time.time()
-        transcription = result["text"].strip()
-        print(f"Transskription færdig på {end_transcribe_time - start_transcribe_time:.2f}s (Total: {end_transcribe_time - start_time:.2f}s): '{transcription}'")
-
-        # 6) Ryd op (slet midlertidig fil) - genaktiveret
-        try:
-            os.remove(audio_path)
-            print(f"Midlertidig lydfil {audio_path} slettet.")
-        except OSError as e:
-            print(f"Fejl ved sletning af midlertidig lydfil: {e}")
-            
-        return transcription
-
-    except Exception as e:
-        print(f"Fejl under transskribering af {audio_path}: {e}")
-        print(traceback.format_exc())
-        # Forsøg at rydde op selv ved fejl
-        if audio_path and os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-                print(f"Midlertidig lydfil {audio_path} slettet efter fejl.")
-            except OSError:
-                pass # Ignorer fejl under oprydning
-        return ""
 
 def speak(text, lang="da"):
     response_mp3 = None  # Initialiser filnavn
@@ -248,42 +284,106 @@ def get_gemini_response(text):
         print(f"Fejl ved Gemini API kald: {e}")
         return "Jeg kan ikke svare på det lige nu på grund af en teknisk fejl."
 
+def load_conversations(path="conversation_pairs.json"):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def find_best_response(user_input, pairs):
+    # Simpel substring-match først
+    for pair in pairs:
+        if pair["user"] in user_input:
+            return pair["jarvis"]
+    # Hvis ikke substring, brug TF-IDF similarity
+    questions = [pair["user"] for pair in pairs]
+    if not questions:
+        return None
+    vectorizer = TfidfVectorizer().fit(questions + [user_input])
+    X = vectorizer.transform(questions)
+    X_user = vectorizer.transform([user_input])
+    sims = cosine_similarity(X_user, X)[0]
+    idx = sims.argmax()
+    if sims[idx] > 0.4:
+        return pairs[idx]["jarvis"]
+    return None
+
+def log_unknown_sentence(sentence, path="ukendte_sætninger.txt"):
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(sentence.strip() + "\n")
+
 def handle_command(command):
     command = command.lower().strip()
-    if "hjælp" in command or "hvad kan du" in command:
-        return """Jeg kan:
-1. Vise klokken - prøv: 'hvad er klokken'
-2. Åbne hjemmesider - prøv: 'åbn google'
-3. Gemme noter - prøv: 'gem note husk at købe mælk'
-4. Svare på spørgsmål"""
-    elif "klokken" in command or "tid" in command:
+    nlu_intent = predict_intent(command)
+    if nlu_intent == "get_time":
         current_time = datetime.datetime.now().strftime("%H:%M")
         return f"Klokken er {current_time}."
-    elif "åbn" in command and ("google" in command or "youtube" in command or ".com" in command or ".dk" in command):
-        site = extract_website_name(command)
-        if site:
-            if not site.startswith("http"):
-                site = "https://" + site
-            webbrowser.open(site)
-            return f"Jeg åbner {site} for dig."
+    elif nlu_intent == "get_date":
+        today = datetime.datetime.now().strftime("%d/%m/%Y")
+        return f"Dagens dato er {today}."
+    elif nlu_intent == "open_app":
+        if "notepad" in command or "notesblok" in command:
+            os.system("start notepad")
+            return "Åbner Notepad."
+        elif "lommeregner" in command or "calculator" in command:
+            os.system("start calc")
+            return "Åbner lommeregner."
+        elif "chrome" in command:
+            os.system("start chrome")
+            return "Åbner Chrome."
         else:
-            return "Jeg forstod ikke, hvilken hjemmeside du ville åbne."
-    elif "gem" in command or "note" in command or "husk" in command:
-        # Fjern trigger-ordene først
-        note_content = command.replace("gem", "").replace("note", "").replace("husk", "").strip()
-        if note_content:
-            with open(NOTES_FILE, "a", encoding="utf-8") as f:
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                f.write(f"{timestamp}: {note_content}\n")
-            return f"Jeg har gemt noten: {note_content}"
+            return "Ukendt program."
+    elif nlu_intent == "search_web":
+        q = command.split("efter ")[-1] if "efter " in command else command
+        webbrowser.open(f"https://www.google.com/search?q={q}")
+        return f"Søger på nettet efter {q}."
+
+    # === Retrieval-baseret samtale/chat ===
+    pairs = load_conversations()
+    response = find_best_response(command, pairs)
+    if response:
+        return response
+    log_unknown_sentence(command)
+
+    # === Neural net fallback ===
+    nn_response = nn_chatbot_response(command)
+    if nn_response:
+        return nn_response
+
+    # === Live learning ===
+    speak("Det ved jeg ikke endnu. Vil du lære mig svaret? Sig 'ja' eller 'nej'.")
+    user_reply = transcribe_audio(record_audio())
+    if user_reply and 'ja' in user_reply.lower():
+        speak("Hvad skal jeg svare næste gang nogen spørger om det?")
+        new_answer = transcribe_audio(record_audio())
+        if new_answer:
+            add_conversation_pair(command, new_answer)
+            speak("Tak! Jeg har lært noget nyt. Træner modellen nu...")
+            os.system("python nn_chatbot_trainer.py")
+            return "Nu har jeg lært noget nyt!"
         else:
-            return "Jeg forstod ikke, hvad jeg skulle gemme som note."
-    elif "farvel" in command or "stop" in command or "sluk" in command:
-        return "farvel"
+            return "Jeg fik ikke fat i svaret. Prøv igen senere."
     else:
-        return get_gemini_response(command)
+        return "Okay, spørg mig om noget andet."
+
+def add_conversation_pair(question, answer, path="conversation_pairs.json"):
+    import json
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            data = []
+    except Exception:
+        data = []
+    data.append({"user": question, "jarvis": answer})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def main():
+    # Indlæs alle modeller én gang ved start
+    load_all_models()
+    
     os.makedirs("data", exist_ok=True)
     # Ryd op i gamle temp mp3 filer ved start
     cleanup_temp_files(TEMP_MP3_BASE, ".mp3")
@@ -303,7 +403,9 @@ def main():
                 # 3. Håndter kommando hvis transskription lykkedes og ikke er tom
                 if user_input: 
                     print(f"Bruger sagde: '{user_input}'") # Udskriv genkendt tekst
-                    handle_command(user_input)
+                    response = handle_command(user_input)
+                    print(f"Jarvis svarer: {response}")
+                    speak(response)
                 else:
                     # Hvis transkription fejlede eller var tom (f.eks. for kort optagelse)
                     print("Ingen gyldig tekst genkendt. Prøv igen.")
