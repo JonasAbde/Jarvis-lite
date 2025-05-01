@@ -12,4 +12,5 @@ sounddevice==0.5.1
 joblib==1.4.2
 torch
 pyttsx3
+danspeech==0.0.1
 simpleaudio; platform_system == "Linux" or platform_system == "Darwin"

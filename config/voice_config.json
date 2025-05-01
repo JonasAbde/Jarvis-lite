@@ -1,0 +1,28 @@
+{
+    "danish_replacements": {
+        "æ": "ae",
+        "ø": "oe",
+        "å": "aa",
+        "Æ": "AE",
+        "Ø": "OE",
+        "Å": "AA",
+        "jeg": "yai",
+        "det": "dat",
+        "er": "air",
+        "og": "aw",
+        "ikke": "igge",
+        "kan": "kan",
+        "vil": "vil",
+        "skal": "skal",
+        "har": "har",
+        "med": "med",
+        "til": "til",
+        "på": "paa",
+        "for": "for",
+        "den": "den",
+        "det": "det",
+        "de": "de",
+        "en": "en",
+        "et": "et"
+    }
+} 
