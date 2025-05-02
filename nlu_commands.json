@@ -1,9 +1,10 @@
 {
   "intents": [
     {
-      "intent": "get_time",
+      "intent": "klokken",
       "examples": [
         "hvad er klokken",
+        "hvad er klocken",
         "kan du sige tiden",
         "fortæl mig hvad klokken er",
         "hvad tid er det nu",
@@ -21,11 +22,13 @@
         "hvor tidligt er det",
         "kan du vise klokken",
         "hvilken tid har vi",
-        "hvor mange minutter er der gået"
+        "hvor mange minutter er der gået",
+        "det sidste var klokken",
+        "hvad er klokken i danmark"
       ]
     },
     {
-      "intent": "get_date",
+      "intent": "dato",
       "examples": [
         "hvad er datoen",
         "hvilken dato er det",
@@ -44,45 +47,76 @@
         "hvilken uge er vi i",
         "kan du oplyse datoen",
         "hvilken dato er det nu",
-        "hvilken dag er det nu"
+        "hvilken dag er det nu",
+        "hvilken dato har vi i dag",
+        "hvad er det for en dato"
       ]
     },
     {
-      "intent": "open_app",
+      "intent": "youtube",
       "examples": [
-        "åbn chrome",
-        "start chrome",
-        "åbn notepad",
-        "start notesblok",
-        "åbn lommeregner",
-        "start calculator",
-        "åbn word",
-        "åbn excel",
-        "start spotify",
-        "åbn spotify",
-        "åbn paint",
-        "start paint",
-        "åbn et program",
-        "start et program",
-        "kan du åbne chrome",
-        "kan du åbne notepad",
-        "kan du åbne lommeregneren",
-        "åbn programmet chrome",
-        "åbn programmet notepad",
-        "kan du starte word",
-        "kan du starte excel",
-        "åbn regneark",
-        "åbn tekstbehandler",
-        "åbn browseren",
-        "åbn internet",
-        "åbn google chrome",
-        "åbn min browser",
-        "åbn musikafspiller",
-        "åbn min musik"
+        "åbn youtube",
+        "start youtube",
+        "jeg vil gerne se youtube",
+        "kan du åbne youtube",
+        "vis mig youtube",
+        "jeg vil på youtube",
+        "youtube",
+        "åben youtube",
+        "gå til youtube",
+        "start youtube-app",
+        "vis youtube",
+        "youtube skal åbnes",
+        "upp i youtube",
+        "læg youtube op",
+        "åbn videotjenesten youtube",
+        "jeg vil gerne se videoer på youtube"
       ]
     },
     {
-      "intent": "search_web",
+      "intent": "website",
+      "examples": [
+        "åbn hjemmeside",
+        "gå til hjemmeside",
+        "åbn webside",
+        "besøg hjemmeside",
+        "kan du åbne hjemmeside",
+        "åbn facebook",
+        "besøg google.com",
+        "åbn instagram",
+        "gå til dr.dk",
+        "jeg vil gerne besøge en hjemmeside",
+        "åbn tv2.dk",
+        "besøg twitter.com",
+        "kan du åbne twitch",
+        "gå til netflix",
+        "åbn en hjemmeside for mig",
+        "åbn google.com"
+      ]
+    },
+    {
+      "intent": "gem_note",
+      "examples": [
+        "gem en note",
+        "skriv ned",
+        "noter følgende",
+        "lav en note",
+        "husk at",
+        "gem dette",
+        "noter dette",
+        "jeg vil gerne gemme en besked",
+        "kan du skrive en note",
+        "gem dette som en note",
+        "husk følgende",
+        "lav en påmindelse",
+        "kan du tage noter",
+        "jeg har brug for at du husker",
+        "gem noter",
+        "husk denne besked"
+      ]
+    },
+    {
+      "intent": "google",
       "examples": [
         "søg efter katte på nettet",
         "find billeder af hunde",
