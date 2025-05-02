@@ -1,4 +1,8 @@
 import os
+# Undertryk TensorFlow INFO og WARNING beskeder
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0' # Undgå oneDNN info (selvom det er harmløst)
+
 import time
 import wave
 import pyaudio
@@ -7,20 +11,23 @@ import datetime
 import webbrowser
 import json
 import requests
-import whisper
+from faster_whisper import WhisperModel
 from gtts import gTTS
 import playsound
 import traceback
 import librosa
-#import torch # Ikke længere direkte nødvendigt her
 import uuid
 import joblib
 import json
+import asyncio
+import concurrent.futures
+from functools import partial
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import keras
 import pickle
 from pathlib import Path
+import threading
 
 # Globale variabler
 FORMAT = pyaudio.paInt16
@@ -39,18 +46,23 @@ nn_model = None
 nn_tokenizer = None
 nn_le = None
 
+# Thread pool til I/O-operationer
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
 # === Funktion til at indlæse alle modeller én gang ===
 def load_all_models():
     global whisper_model, nlu_model, nlu_vectorizer, nn_model, nn_tokenizer, nn_le
     print("[INFO] Indlæser modeller...")
     try:
         try:
-            whisper_model = whisper.load_model("small", device="cuda")
-            print("[INFO] Whisper model ('small') indlæst på GPU (cuda).")
+            # Bruger nu Faster-Whisper med int8 kvantisering for bedre hastighed
+            whisper_model = WhisperModel("small", device="cuda", compute_type="int8")
+            print("[INFO] Faster-Whisper model ('small') indlæst på GPU (cuda) med INT8 kvantisering.")
         except Exception as e:
             print(f"[ADVARSEL] Kunne ikke indlæse Whisper på GPU: {e}\nFalder tilbage til CPU...")
-            whisper_model = whisper.load_model("small", device="cpu")
-            print("[INFO] Whisper model ('small') indlæst på CPU.")
+            # int8 er god for CPU-performance
+            whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+            print("[INFO] Faster-Whisper model ('small') indlæst på CPU med INT8 kvantisering.")
     except Exception as e:
         print(f"[FEJL] Kunne ikke indlæse Whisper model: {e}")
 
@@ -85,6 +97,12 @@ def predict_intent(text):
         print(f"Fejl under NLU intent forudsigelse: {e}")
         return None
 
+# Asynkron version af transcribe_audio
+async def transcribe_audio_async(file_path):
+    """Asynkron wrapper til transskription"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, partial(transcribe_audio, file_path))
+
 def transcribe_audio(file_path):
     global whisper_model
     if not whisper_model:
@@ -97,19 +115,29 @@ def transcribe_audio(file_path):
         return None
     start_time = time.time()
     try:
+        # Indlæs lydfilen med librosa (uændret)
         try:
-            audio = whisper.load_audio(str(temp_path))
-            print(f" - Lyd indlæst med whisper.load_audio ({len(audio)} samples, 16000Hz) på {time.time() - start_time:.2f}s")
-        except Exception as e:
-            print(f"Kunne ikke indlæse med whisper.load_audio: {e}\nPrøver med librosa i stedet...")
             audio, _ = librosa.load(str(temp_path), sr=16000, mono=True)
             print(f" - Lyd indlæst med librosa ({len(audio)} samples, 16000Hz) på {time.time() - start_time:.2f}s")
-        result = whisper_model.transcribe(audio, language="da") # Brug global model
-        transcription = result["text"].strip()
-        print(f" - Transskription færdig på {time.time() - start_time:.2f}s: '{transcription}'")
-        return transcription
+        except Exception as e:
+            print(f"[FEJL] Kunne ikke indlæse lyd med librosa: {e}")
+            return None
+            
+        # Brug Faster-Whisper til transskription
+        segments, info = whisper_model.transcribe(audio, language="da", beam_size=5)
+        segments_list = list(segments)  # Konverter generator til liste
+        
+        if segments_list:
+            # Saml tekst fra alle segmenter
+            transcription = " ".join([segment.text for segment in segments_list])
+            print(f" - Transskription færdig på {time.time() - start_time:.2f}s: '{transcription}'")
+            return transcription.strip()
+        else:
+            print(f"[ADVARSEL] Ingen tekst blev genereret ved transskription.")
+            return None
     except Exception as e:
         print(f"Fejl under transskription: {e}")
+        traceback.print_exc()
         return None
 
 def nn_chatbot_response(user_input):
@@ -126,6 +154,12 @@ def nn_chatbot_response(user_input):
     except Exception as e:
         print(f"[NN-Chatbot fejl]: {e}")
         return None
+
+# Asynkron version af record_audio
+async def record_audio_async():
+    """Asynkron wrapper til lydoptagelse"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, record_audio)
 
 def record_audio():
     p = pyaudio.PyAudio()
@@ -146,27 +180,21 @@ def record_audio():
             frames.append(data)
             chunk_count += 1
             audio_data = np.frombuffer(data, dtype=np.int16)
-            # Udregn både gennemsnit og max rå værdi
             amplitude_mean = np.abs(audio_data).mean()
             amplitude_max_raw = np.abs(audio_data).max() if len(audio_data) > 0 else 0
             max_amplitude_seen = max(max_amplitude_seen, amplitude_mean) # Beholder gennemsnit her
             
-            # Log max rå værdi for at se om der overhovedet er signal
             if chunk_count < 10 or chunk_count % 20 == 0: # Log lidt i starten og periodisk
                 print(f"Lytter... (chunk {chunk_count}, mean_amp: {amplitude_mean:.2f}, max_raw: {amplitude_max_raw})")
                 
             if amplitude_mean < silence_threshold:
                 silence_chunks += 1
                 if silence_chunks > max_silence_chunks:
-                    # print(f"Stilhed detekteret i {silence_chunks} chunks, afslutter optagelse.")
                     listening = False
             else:
-                # if silence_chunks > 10:
-                #     print(f"*** Lyd detekteret igen (amplitude: {amplitude_mean:.2f}) ***")
                 silence_chunks = 0
                 
             if chunk_count > max_recording_chunks:
-                # print("Maksimal optagetid nået, afslutter optagelse.")
                 listening = False
     except KeyboardInterrupt:
         print("Optagelse afbrudt af bruger.")
@@ -200,240 +228,276 @@ def record_audio():
             print(f"Fejl ved skrivning af lydfil: {e}")
             return None
 
-def speak(text, lang="da"):
-    response_mp3 = None  # Initialiser filnavn
+# Asynkron TTS
+async def speak_async(text, lang='da'):
+    """Asynkron wrapper til TTS"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, partial(speak, text, lang))
+
+def speak(text, lang='da'):
     try:
-        print(f"Jarvis siger: {text}")
+        print(f"Jarvis svarer: {text}")
         
-        # Opret et unikt filnavn for hver TTS-response ved hjælp af uuid
         unique_id = uuid.uuid4()
         response_mp3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"jarvis_response_{unique_id}.mp3")
         
-        # Generer og gem lydklip
         tts = gTTS(text=text, lang=lang, slow=False)
         tts.save(response_mp3)
-        print(f"Lydfil gemt til: {response_mp3}") # Tilføjet print for at se det unikke navn
+        print(f"Lydfil gemt til: {response_mp3}")
         
         try:
-            # Afspil lydklip
-            playsound.playsound(response_mp3)
-            print(f"Lydklip afspillet")
+            # Gør lydafspilning non-blocking
+            playsound.playsound(response_mp3, block=False)
+            print(f"Lydklip afspilles (ikke-blokerende)")
         except Exception as e:
-            print(f"Fejl ved afspilning: {e}")
-        
+            print(f"Kunne ikke afspille lyd: {e}")
     except Exception as e:
         print(f"Fejl ved tekst-til-tale konvertering: {e}")
         print(traceback.format_exc())
     finally:
-        # Slet altid filen, hvis den blev oprettet, uanset om afspilning lykkedes
         if response_mp3 and os.path.exists(response_mp3):
             try:
-                # Vent et kort øjeblik for at give OS tid til at frigive filen
                 time.sleep(0.5)
                 os.remove(response_mp3)
                 print(f"Midlertidig lydfil {os.path.basename(response_mp3)} slettet")
-            except Exception as e:
-                print(f"Kunne ikke slette lydfil {os.path.basename(response_mp3)}: {e}")
+            except:
                 # Ikke kritisk, fortsæt
+                pass
 
 def extract_website_name(text):
-    """Forsøger at udtrække et websitenavn fra teksten."""
     if "google" in text.lower():
         return "google.com"
     elif "youtube" in text.lower():
         return "youtube.com"
     
-    # Tjek for .com, .dk etc.
     words = text.split()
     for word in words:
         word = word.lower()
-        if word.endswith(".com") or word.endswith(".dk") or word.endswith(".org"):
+        if any(ext in word for ext in [".com", ".dk", ".org", ".net"]):
             return word
     return None
 
 def get_gemini_response(text):
-    """Få et intelligent svar fra Gemini API hvis tilgængeligt"""
     api_key = os.environ.get('GEMINI_API_KEY', None)
     
     if not api_key:
-        return "Jeg forstår ikke, hvad du mener med \"{}\"? Kan du omformulere dit spørgsmål?".format(text)
+        return None
+        
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+    headers = {'Content-Type': 'application/json'}
+    params = {'key': api_key}
+    
+    payload = {
+        "contents": [{"parts":[{"text": text}]}],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 2048
+        }
+    }
     
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
-        
-        data = {
-            "contents": [{
-                "parts": [{
-                    "text": f"Besvar dette spørgsmål kort og præcist på dansk: {text}"
-                }]
-            }]
-        }
-        
-        response = requests.post(url, json=data)
+        response = requests.post(url, headers=headers, params=params, json=payload)
         
         if response.status_code == 200:
-            response_data = response.json()
-            if "candidates" in response_data and len(response_data["candidates"]) > 0:
-                if "content" in response_data["candidates"][0]:
-                    content = response_data["candidates"][0]["content"]
-                    if "parts" in content and len(content["parts"]) > 0:
-                        return content["parts"][0]["text"]
+            content = response.json()
+            if 'candidates' in content and len(content['candidates']) > 0:
+                parts = content['candidates'][0]['content']['parts']
+                if len(parts) > 0:
+                    return parts[0]['text']
         
-        return "Jeg forstår ikke spørgsmålet. Kan du omformulere det?"
+        print(f"Gemini API-svar fejlede: {response.status_code} {response.text}")
+        return None
     except Exception as e:
-        print(f"Fejl ved Gemini API kald: {e}")
-        return "Jeg kan ikke svare på det lige nu på grund af en teknisk fejl."
+        print(f"Fejl under Gemini API-kald: {e}")
+        return None
 
-def load_conversations(path="conversation_pairs.json"):
+def load_conversations():
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open('data/conversation_pairs.json', 'r', encoding='utf-8') as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        print(f"Kunne ikke indlæse samtalepar: {e}")
         return []
 
 def find_best_response(user_input, pairs):
-    # Simpel substring-match først
     for pair in pairs:
         if pair["user"] in user_input:
             return pair["jarvis"]
-    # Hvis ikke substring, brug TF-IDF similarity
     questions = [pair["user"] for pair in pairs]
     if not questions:
         return None
-    vectorizer = TfidfVectorizer().fit(questions + [user_input])
-    X = vectorizer.transform(questions)
-    X_user = vectorizer.transform([user_input])
-    sims = cosine_similarity(X_user, X)[0]
-    idx = sims.argmax()
-    if sims[idx] > 0.4:
-        return pairs[idx]["jarvis"]
+        
+    vectorizer = TfidfVectorizer()
+    try:
+        tfidf_matrix = vectorizer.fit_transform(questions)
+        user_tfidf = vectorizer.transform([user_input])
+        
+        cosine_similarities = cosine_similarity(user_tfidf, tfidf_matrix)
+        best_match_index = cosine_similarities[0].argmax()
+        
+        # Et vist minimum af lighed kræves
+        if cosine_similarities[0][best_match_index] >= 0.4:
+            return pairs[best_match_index]["jarvis"]
+    except Exception as e:
+        print(f"Fejl i similarity beregning: {e}")
+        
     return None
 
-def log_unknown_sentence(sentence, path="ukendte_sætninger.txt"):
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(sentence.strip() + "\n")
+def log_unknown_sentence(sentence):
+    if not sentence or sentence.isspace():
+        return
+    
+    try:
+        with open("ukendte_sætninger.txt", "a", encoding="utf-8") as f:
+            f.write(f"{sentence}\n")
+    except Exception as e:
+        print(f"Kunne ikke logge ukendt sætning: {e}")
 
 def handle_command(command):
-    command = command.lower().strip()
-    nlu_intent = predict_intent(command)
-    if nlu_intent == "get_time":
-        current_time = datetime.datetime.now().strftime("%H:%M")
-        return f"Klokken er {current_time}."
-    elif nlu_intent == "get_date":
-        today = datetime.datetime.now().strftime("%d/%m/%Y")
-        return f"Dagens dato er {today}."
-    elif nlu_intent == "open_app":
-        if "notepad" in command or "notesblok" in command:
-            os.system("start notepad")
-            return "Åbner Notepad."
-        elif "lommeregner" in command or "calculator" in command:
-            os.system("start calc")
-            return "Åbner lommeregner."
-        elif "chrome" in command:
-            os.system("start chrome")
-            return "Åbner Chrome."
-        else:
-            return "Ukendt program."
-    elif nlu_intent == "search_web":
-        q = command.split("efter ")[-1] if "efter " in command else command
+    if not command or command.isspace():
+        return "Jeg kunne ikke forstå, hvad du sagde. Prøv igen."
+    
+    command = command.strip().lower()
+    
+    intent = predict_intent(command)
+    print(f"Intent: {intent}")
+    
+    if intent == "klokken":
+        now = datetime.datetime.now()
+        return f"Klokken er {now.strftime('%H:%M')}"
+    
+    if intent == "dato":
+        now = datetime.datetime.now()
+        return f"Dagens dato er {now.strftime('%d/%m/%Y')}"
+
+    if intent == "vejr":
+        return "Desværre har jeg ikke adgang til vejrudsigten lige nu."
+    
+    if intent == "website":
+        website = extract_website_name(command)
+        if website:
+            if not website.startswith("http"):
+                website = "https://" + website
+            webbrowser.open(website)
+            return f"Åbner {website}"
+        return "Jeg kunne ikke finde et websted at åbne."
+    
+    if intent == "youtube" or "youtube" in command.lower():
+        try:
+            # Kør i en separat tråd for at undgå blokeringsproblemer
+            def open_youtube():
+                webbrowser.open("https://www.youtube.com")
+                print("YouTube åbnet i browser")
+            threading.Thread(target=open_youtube, daemon=True).start()
+            return "Åbner YouTube..."
+        except Exception as e:
+            print(f"Fejl ved åbning af YouTube: {e}")
+            return "Kunne ikke åbne YouTube på grund af en fejl"
+    
+    if intent == "gem_note":
+        note_text = command.replace("gem", "", 1).replace("note", "", 1).strip()
+        if not note_text:
+            return "Hvad skal jeg gemme som note?"
+        
+        with open(NOTES_FILE, "a", encoding="utf-8") as f:
+            f.write(note_text + "\n")
+        return f"Jeg har gemt noten: {note_text}"
+    
+    if intent == "google":
+        q = command.replace("søg", "", 1).replace("google", "", 1).strip()
+        if not q:
+            return "Hvad skal jeg søge efter?"
         webbrowser.open(f"https://www.google.com/search?q={q}")
         return f"Søger på nettet efter {q}."
 
-    # === Retrieval-baseret samtale/chat ===
     pairs = load_conversations()
     response = find_best_response(command, pairs)
     if response:
         return response
     log_unknown_sentence(command)
 
-    # === Neural net fallback ===
     nn_response = nn_chatbot_response(command)
     if nn_response:
         return nn_response
-
-    # === Live learning ===
+    
     speak("Det ved jeg ikke endnu. Vil du lære mig svaret? Sig 'ja' eller 'nej'.")
     user_reply = transcribe_audio(record_audio())
     if user_reply and 'ja' in user_reply.lower():
-        speak("Hvad skal jeg svare næste gang nogen spørger om det?")
-        new_answer = transcribe_audio(record_audio())
-        if new_answer:
-            add_conversation_pair(command, new_answer)
-            speak("Tak! Jeg har lært noget nyt. Træner modellen nu...")
-            os.system("python nn_chatbot_trainer.py")
-            return "Nu har jeg lært noget nyt!"
+        speak("Hvad skal jeg svare, når nogen siger " + command + "?")
+        answer = transcribe_audio(record_audio())
+        if answer:
+            add_conversation_pair(command, answer)
+            return f"Tak, nu har jeg lært at svare: {answer}"
         else:
-            return "Jeg fik ikke fat i svaret. Prøv igen senere."
-    else:
-        return "Okay, spørg mig om noget andet."
+            return "Jeg forstod ikke dit svar. Vi prøver igen senere."
+    
+    # Fallback til Google API, hvis tilgængeligt
+    gemini_response = get_gemini_response(command)
+    if gemini_response:
+        return gemini_response
+    
+    return "Det forstår jeg ikke endnu, men jeg har noteret det til senere læring."
 
-def add_conversation_pair(question, answer, path="conversation_pairs.json"):
-    import json
+def add_conversation_pair(user_text, jarvis_text):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open('data/conversation_pairs.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-        if not isinstance(data, list):
-            data = []
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError):
         data = []
-    data.append({"user": question, "jarvis": answer})
-    with open(path, "w", encoding="utf-8") as f:
+    
+    data.append({"user": user_text, "jarvis": jarvis_text})
+    
+    with open('data/conversation_pairs.json', 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def main():
-    # Indlæs alle modeller én gang ved start
+# Asynkron hoved-loop
+async def main_async():
+    """Asynkront hovedloop"""
     load_all_models()
     
     os.makedirs("data", exist_ok=True)
-    # Ryd op i gamle temp mp3 filer ved start
     cleanup_temp_files(TEMP_MP3_BASE, ".mp3")
     
     print("=== Jarvis Lite er klar! ===")
-    speak("Jarvis Lite er aktiveret og klar til at hjælpe")
+    await speak_async("Jarvis Lite er aktiveret og klar til at hjælpe")
 
     try:
         while True:
-            # 1. Optag lyd
-            audio_file_path = record_audio()
+            # Optagelse (potentielt blokerende, men kører i thread pool)
+            audio_file_path = await record_audio_async()
             
             if audio_file_path:
-                # 2. Transskriber lyden
-                user_input = transcribe_audio(audio_file_path)
+                # Transskription (CPU/GPU-intensiv, kører i thread pool)
+                user_input = await transcribe_audio_async(audio_file_path)
                 
-                # 3. Håndter kommando hvis transskription lykkedes og ikke er tom
                 if user_input: 
-                    print(f"Bruger sagde: '{user_input}'") # Udskriv genkendt tekst
+                    print(f"Bruger sagde: '{user_input}'")
+                    speak_text = f"Du sagde: {user_input}. "
+                    
+                    # Intent-håndtering (mindre intensiv, kører i hovedtråd)
                     response = handle_command(user_input)
-                    print(f"Jarvis svarer: {response}")
-                    speak(response)
+                    # TTS (netværk + I/O, kører i thread pool)
+                    await speak_async(speak_text + response)
                 else:
-                    # Hvis transkription fejlede eller var tom (f.eks. for kort optagelse)
                     print("Ingen gyldig tekst genkendt. Prøv igen.")
-                    # Vi kan evt. afspille en lyd her, men undlader for nu
-                    # speak("Jeg opfattede ikke noget. Prøv igen.") 
             else:
-                # Håndter hvis record_audio returnerede None (f.eks. ingen lyd optaget)
                 print("Ingen lyd blev optaget. Prøv igen.")
                 
-            # Kort pause for at undgå at loope for hurtigt ved fejl
-            # time.sleep(0.5)
+            await asyncio.sleep(0.5)
 
     except KeyboardInterrupt:
         print("\nJarvis Lite lukkes ned via tastaturafbrydelse.")
     finally:
         print("Rydder op...")
-        # Sikrer at PyAudio lukkes hvis det ikke skete i record_audio
         try: 
             p = pyaudio.PyAudio()
             p.terminate()
         except:
             pass
-        # Ryd op i eventuelle resterende temp-filer
         cleanup_temp_files(TEMP_WAV, "") # Slet specifik wav fil hvis den stadig findes
         cleanup_temp_files(TEMP_MP3_BASE, ".mp3")
         print("Jarvis Lite er lukket ned.")
 
-# Funktion til at rydde op i midlertidige filer
 def cleanup_temp_files(basename, extension):
     temp_dir = os.path.dirname(basename)
     base = os.path.basename(basename)
@@ -442,9 +506,21 @@ def cleanup_temp_files(basename, extension):
             try:
                 filepath = os.path.join(temp_dir, filename)
                 os.remove(filepath)
-                # print(f"Slettede gammel temp-fil: {filepath}") # Gør det mindre støjende
             except Exception as e:
                 print(f"Kunne ikke slette gammel temp-fil {filename}: {e}")
+
+def main():
+    """Starter det asynkrone hovedloop"""
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main_async())
+    except KeyboardInterrupt:
+        print("\nJarvis Lite lukkes ned via tastaturafbrydelse.")
+        cleanup_temp_files(TEMP_WAV, "")
+        cleanup_temp_files(TEMP_MP3_BASE, ".mp3")
+        print("Jarvis Lite er lukket ned.")
+    finally:
+        loop.close()
 
 if __name__ == "__main__":
     main()
