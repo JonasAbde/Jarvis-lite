@@ -16,7 +16,8 @@ from sklearn.metrics import classification_report
 
 # Konfigurer logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,16 @@ TRAINING_DATA = {
         "har du et ur",
         "ved du hvad klokken er",
         "hvor meget er klokken",
+        "hvad siger klokken",
+        "hvilket tidspunkt har vi",
+        "hvor sent er det",
+        "kan du fortælle mig hvad tid det er",
+        "hvad er klokken blevet",
+        "jeg vil gerne vide hvad klokken er",
+        "fortæl mig venligst hvad klokken er",
+        "jeg har brug for at vide hvad tid det er",
+        "hvad er uret",
+        "kender du tiden",
     ],
     "get_date": [
         "hvilken dag er det i dag",
@@ -49,6 +60,17 @@ TRAINING_DATA = {
         "hvilken ugedag er det",
         "hvad er det for en dag",
         "er det mandag i dag",
+        "hvilken dato har vi",
+        "hvilken måned er det",
+        "hvad er datoen i dag",
+        "kan du fortælle mig hvilken dato vi har",
+        "hvad er det for en ugedag",
+        "fortæl mig hvilken dag det er",
+        "hvilken dag i ugen er det",
+        "hvilket årstal er det",
+        "hvilken dag i måneden har vi",
+        "hvilken måned har vi",
+        "hvad er det for en dag i ugen",
     ],
     "tell_joke": [
         "fortæl mig en joke",
@@ -61,6 +83,16 @@ TRAINING_DATA = {
         "kan du få mig til at grine",
         "har du en vittighed",
         "vær sjov",
+        "fortæl en god joke",
+        "kender du nogle vittigheder",
+        "jeg vil gerne høre noget sjovt",
+        "kan du sige noget morsomt",
+        "fortæl mig noget der kan få mig til at grine",
+        "jeg har brug for at grine lidt",
+        "har du nogle gode jokes",
+        "kan du muntre mig op med en vittighed",
+        "jeg vil gerne høre en vittighed",
+        "gør mig i godt humør med en joke",
     ],
     "open_website": [
         "åbn youtube",
@@ -73,6 +105,16 @@ TRAINING_DATA = {
         "jeg vil gerne på google",
         "åbn en browser",
         "gå til dr.dk",
+        "åbn facebook",
+        "kan du åbne netflix",
+        "gå ind på tv2.dk",
+        "åbn min e-mail",
+        "kan du åbne gmail",
+        "jeg vil gerne tjekke nyhederne på dr.dk",
+        "åbn wikipedia",
+        "vis mig facebook hjemmesiden",
+        "kan du åbne amazon",
+        "vis mig instagram",
     ],
     "get_help": [
         "hvad kan du",
@@ -85,6 +127,16 @@ TRAINING_DATA = {
         "hvad er dine funktioner",
         "vis mig en liste over kommandoer",
         "hvilke ting kan du gøre",
+        "hvordan fungerer du",
+        "forklar mig hvordan du virker",
+        "vejledning",
+        "guide mig",
+        "hvordan kan jeg bruge dig",
+        "vis mig mulighederne",
+        "hvilke opgaver kan du udføre",
+        "fortæl mig om dine funktioner",
+        "hvad kan jeg spørge dig om",
+        "hvad skal jeg gøre for at bruge dig",
     ],
     "greeting": [
         "hej",
@@ -97,6 +149,16 @@ TRAINING_DATA = {
         "god eftermiddag",
         "hilser",
         "hej med dig",
+        "hallo",
+        "dav",
+        "goddav",
+        "mojn",
+        "hej jarvis",
+        "hej med dig jarvis",
+        "god dag til dig",
+        "hvordan går det",
+        "hvordan har du det",
+        "hyggeligt at møde dig",
     ],
     "goodbye": [
         "farvel",
@@ -109,6 +171,16 @@ TRAINING_DATA = {
         "jeg går nu",
         "afslut",
         "luk ned",
+        "på gensyn",
+        "ses senere",
+        "ses i morgen",
+        "godnat",
+        "tak for hjælpen",
+        "slut for i dag",
+        "jeg er færdig",
+        "jeg skal gå nu",
+        "tak for nu",
+        "jeg er færdig med at snakke",
     ],
     "save_note": [
         "gem en note",
@@ -121,6 +193,16 @@ TRAINING_DATA = {
         "lav et notat med",
         "kan du gemme denne information",
         "gem teksten",
+        "noter dette",
+        "lav en huskeseddel",
+        "gem en påmindelse om",
+        "skriv en note med",
+        "tilføj til mine noter",
+        "gem dette til senere",
+        "jeg har brug for at huske",
+        "opret en note med følgende",
+        "husk denne besked",
+        "kan du skrive en note til mig",
     ],
     "about_you": [
         "hvem er du",
@@ -133,6 +215,60 @@ TRAINING_DATA = {
         "hvordan er du lavet",
         "hvilken type AI er du",
         "hvordan fungerer du",
+        "fortæl mig om dig selv",
+        "hvad er du for en",
+        "hvad kan du fortælle om dig selv",
+        "hvad er formålet med dig",
+        "hvad er din funktion",
+        "er du menneskelig",
+        "er du en computer",
+        "hvad er du",
+        "hvordan blev du skabt",
+        "hvor gammel er du",
+    ],
+    "get_weather": [
+        "hvordan bliver vejret",
+        "hvordan er vejret i dag",
+        "hvad siger vejrudsigten",
+        "skal jeg tage en paraply med",
+        "bliver det regn i dag",
+        "hvordan er temperaturen udenfor",
+        "bliver det solskin",
+        "kommer det til at regne",
+        "hvordan er vejret i morgen",
+        "skal jeg have en jakke på",
+        "bliver det varmt i dag",
+        "vejrudsigt for i dag",
+        "hvad med vejret i weekenden",
+        "fortæl mig om vejret",
+        "hvordan er vejrforholdene",
+        "er det koldt udenfor",
+        "bliver det blæsevejr",
+        "hvad er temperaturen lige nu",
+        "hvordan er vejrudsigten for i aften",
+        "er det godt vejr til en gåtur",
+    ],
+    "play_music": [
+        "spil noget musik",
+        "kan du afspille musik",
+        "jeg vil høre musik",
+        "spil min yndlingssang",
+        "spil noget afslapningsmusik",
+        "start afspilning af musik",
+        "jeg vil gerne høre noget musik",
+        "kan du spille en sang",
+        "musik",
+        "afspil en sang",
+        "spil noget jazz",
+        "start musikafspiller",
+        "afspil min spilleliste",
+        "jeg har lyst til at høre musik",
+        "kan du afspille noget klassisk",
+        "jeg vil gerne have musik i baggrunden",
+        "spil den seneste musik",
+        "afspil min favoritmusik",
+        "start noget musik",
+        "jeg trænger til noget musik",
     ],
 }
 
@@ -170,23 +306,27 @@ def train_classifier() -> Tuple[TfidfVectorizer, LogisticRegression, List[str]]:
     intents = list(TRAINING_DATA.keys())
 
     # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    logger.info(
-        f"Træner på {len(X_train)} eksempler, tester på {len(X_test)} eksempler"
-    )
+    logger.info(f"Træner på {len(X_train)} eksempler, tester på {len(X_test)} eksempler")
 
     # Opret og træn TF-IDF vectorizer
     vectorizer = TfidfVectorizer(
-        ngram_range=(1, 2), min_df=2, max_df=0.95, analyzer="word", sublinear_tf=True
+        ngram_range=(1, 3),  # Brug både unigrams, bigrams og trigrams
+        min_df=2,
+        max_df=0.95,
+        analyzer="word",
+        sublinear_tf=True,
     )
     X_train_tfidf = vectorizer.fit_transform(X_train)
 
-    # Opret og træn LogReg classifier
+    # Opret og træn LogReg classifier med forbedrede parametre
     classifier = LogisticRegression(
-        C=1.0, max_iter=200, multi_class="ovr", solver="liblinear", random_state=42
+        C=1.5,  # Lidt mindre regulering
+        max_iter=300,  # Flere iterationer
+        multi_class="ovr",
+        solver="liblinear",
+        random_state=42,
     )
     classifier.fit(X_train_tfidf, y_train)
 
@@ -199,14 +339,19 @@ def train_classifier() -> Tuple[TfidfVectorizer, LogisticRegression, List[str]]:
     logger.info(classification_report(y_test, y_pred))
 
     # Test med nogle probabilities
-    probs = classifier.predict_proba(
-        vectorizer.transform(
-            ["hvad er klokken", "åben en hjemmeside", "noget helt tilfældigt"]
-        )
-    )
+    test_examples = [
+        "hvad er klokken",
+        "åben youtube",
+        "noget helt tilfældigt",
+        "hvordan bliver vejret i dag",
+        "afspil noget musik",
+    ]
+    probs = classifier.predict_proba(vectorizer.transform(test_examples))
     for i, prob in enumerate(probs):
         logger.info(
-            f"Eksempel {i+1}: Max konfidens: {prob.max():.2f}, Klasse: {classifier.classes_[np.argmax(prob)]}"
+            f"Eksempel {i+1} ('{test_examples[i]}'): "
+            f"Max konfidens: {prob.max():.2f}, "
+            f"Klasse: {classifier.classes_[np.argmax(prob)]}"
         )
 
     return vectorizer, classifier, intents
