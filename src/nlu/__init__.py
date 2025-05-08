@@ -9,4 +9,4 @@ from typing import Tuple, Dict, List, Any
 from .classifier import predict, analyze, get_available_intents
 
 # Re-export for at gøre tilgængelig ved import fra nlu-modulet
-__all__ = ["predict", "analyze", "get_available_intents"] 
+__all__ = ["predict", "analyze", "get_available_intents"]
