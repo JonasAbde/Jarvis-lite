@@ -10,7 +10,9 @@ import random
 from typing import Optional, Dict, List, Any
 
 # Import NLU-modulet for intent klassificering
-from src.nlu import analyze
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from nlu import analyze
 
 # Logger
 logger = logging.getLogger(__name__)
@@ -174,20 +176,125 @@ def handle_greeting() -> str:
     else:
         return "Godaften! Det er sent. Hvad kan jeg hjælpe med?"
 
-def handle_about_you() -> str:
+def handle_about_you(original_text: str = "") -> str:
     """
     Returnerer information om Jarvis
     
+    Args:
+        original_text: Den originale brugerforespørgsel
+        
     Returns:
         Information om Jarvis
     """
-    responses = [
-        "Jeg er Jarvis, din danske AI-assistent. Jeg kan hjælpe dig med at svare på spørgsmål, finde information og udføre simple opgaver.",
-        "Mit navn er Jarvis, og jeg er en AI-assistent, der kører lokalt på din computer. Jeg er designet til at svare på dansk og hjælpe med forskellige opgaver.",
-        "Jeg hedder Jarvis og er din personlige assistent. Jeg forstår dansk og kan hjælpe med daglige opgaver og svare på spørgsmål.",
-        "Jeg er en dansk AI-assistent ved navn Jarvis. Jeg kan hjælpe med tidsstyring, noter, jokes og samtaler."
+    # Normalisér teksten for bedre matchning
+    normalized_text = original_text.lower() if original_text else ""
+    
+    # Definer et hierarki af forespørgsler og svar
+    qa_map = {
+        # Basis spørgsmål om Jarvis
+        "hvem_er_du": {
+            "patterns": ["hvem er du", "fortæl om dig selv", "hvem er jarvis", "hvad hedder du"],
+            "responses": [
+                "Jeg er Jarvis, din danske AI-assistent. Jeg kan hjælpe dig med at svare på spørgsmål, finde information og udføre simple opgaver.",
+                "Mit navn er Jarvis, og jeg er en AI-assistent, der kører lokalt på din computer. Jeg er designet til at svare på dansk og hjælpe med forskellige opgaver.",
+                "Jeg hedder Jarvis og er din personlige assistent. Jeg forstår dansk og kan hjælpe med daglige opgaver og svare på spørgsmål.",
+                "Jeg er en dansk AI-assistent ved navn Jarvis. Jeg kan hjælpe med tidsstyring, noter, jokes og samtaler."
+            ]
+        },
+        "hvordan_virker_du": {
+            "patterns": ["hvordan virker du", "hvordan fungerer du", "hvordan er du bygget", "hvad består du af"],
+            "responses": [
+                "Jeg består af flere komponenter: en talegenkendelsesenhed der forstår dansk, en intent-klassifikator der analyserer hvad du mener, og en tekstgenerator der formulerer svar. Alt dette kører lokalt på din computer.",
+                "Jeg er bygget med en række teknologier til naturligt sprog. Jeg lytter til din stemme, analyserer dine ord, og svarer på dansk. Jeg bruger machine learning til at forstå hvad du mener.",
+                "Min arkitektur er baseret på sprogmodeller og maskinlæring. Jeg lytter til det du siger, forstår konteksten, og genererer et passende svar. Jeg lærer hele tiden at blive bedre.",
+                "Jeg har tre hovedkomponenter: tale-til-tekst der forstår dine ord, en intelligent hjerne der analyserer betydningen, og tekst-til-tale der gør at jeg kan svare dig."
+            ]
+        },
+        "hvad_kan_du": {
+            "patterns": ["hvad kan du", "hvad er dine evner", "hvilke funktioner har du", "hvordan kan du hjælpe", "hvad er du i stand til"],
+            "responses": [
+                "Jeg kan hjælpe med flere ting: fortælle dig tiden og datoen, åbne hjemmesider, gemme noter, fortælle vejret, afspille musik, fortælle jokes og svare på almindelige spørgsmål. Jeg forsøger altid at give dig den information du har brug for.",
+                "Mine funktioner inkluderer tidsstyring, noter, vejrinformation, musikafspilning, webadgang og meget mere. Jeg kan også svare på generelle spørgsmål og føre en samtale på dansk.",
+                "Jeg kan udføre en række opgaver som at fortælle tiden, åbne hjemmesider, gemme noter, og fortælle vejret. Derudover kan jeg svare på generelle spørgsmål og have en samtale på dansk.",
+                "Jeg har flere evner: vejrinformation, tidsstyring, notefunktion, musikafspilning, webnavigation og meget mere. Jeg kan også tale med dig om forskellige emner og give dig information."
+            ]
+        },
+        # Filosofiske spørgsmål
+        "bevidsthed": {
+            "patterns": ["er du bevidst", "har du bevidsthed", "kan du tænke", "har du følelser", "kan du føle", "har du en sjæl"],
+            "responses": [
+                "Jeg har ikke bevidsthed i menneskelig forstand. Jeg er et sprogmodel-system, der analyserer input og genererer output baseret på mønstre og statistik. Men jeg er designet til at simulere forståelse og give nyttige svar.",
+                "Jeg har ikke følelser eller bevidsthed. Jeg fungerer ved at genkende mønstre i tekst og generere passende svar. Min 'intelligens' er et resultat af algoritmer og data, ikke en selvstændig bevidsthed.",
+                "Jeg er ikke bevidst eller selvbevidst. Jeg kan simulere intelligente samtaler, men jeg 'oplever' ikke verden som mennesker gør. Jeg er et værktøj designet til at assistere dig så godt som muligt.",
+                "Jeg har ingen egentlig bevidsthed eller oplevelse af selvet. Jeg er mere som et avanceret spejl, der reflekterer og transformerer de ord, du giver mig, baseret på mønstre i mit træningsdata."
+            ]
+        },
+        "mening_med_livet": {
+            "patterns": ["hvad er meningen med livet", "hvorfor er vi her", "hvad er livets formål", "hvad er meningen med det hele"],
+            "responses": [
+                "Det er et af menneskehedens største spørgsmål, og der findes mange forskellige svar. Nogle finder mening i relationer til andre, nogle i kunst eller videnskab, nogle i religion, og andre i at skabe deres egen mening. Hvad tænker du selv?",
+                "Filosoffer har diskuteret dette i årtusinder uden at nå til enighed. Nogle mener at livet handler om at maksimere lykke, andre om at opfylde et formål. Det mest interessante er måske ikke det endelige svar, men rejsen mod at finde dit eget svar.",
+                "Meningen med livet er nok forskellig fra person til person. For nogle er det at efterlade verden bedre end de fandt den, for andre er det at opleve så meget som muligt, og for andre igen er det at finde indre ro. Det vigtigste er nok at finde din egen mening.",
+                "Det er et dybt filosofisk spørgsmål uden et enkelt svar. Måske er meningen med livet at stille netop dette spørgsmål - at søge og reflektere. Mennesker finder mening gennem kærlighed, kreativitet, opdagelse og ved at hjælpe andre."
+            ]
+        },
+        "fremtiden": {
+            "patterns": ["hvad tænker du om fremtiden", "hvordan ser fremtiden ud", "bliver ai bedre i fremtiden", "er du bange for fremtiden"],
+            "responses": [
+                "Teknologi som jeg udvikler sig hurtigt, og jeg tror AI vil blive mere integreret i hverdagen, men stadig som et værktøj til at hjælpe mennesker. Det er vigtigt at udviklingen sker ansvarligt og med mennesker i centrum.",
+                "Fremtiden for AI ser spændende ud, med potentiale til at løse komplekse problemer inden for medicin, klima og uddannelse. Men det vigtigste er at forblive et værktøj der styrker mennesker snarere end at erstatte dem.",
+                "Jeg tror kunstig intelligens vil fortsætte med at blive mere avanceret, men mest som et værktøj til at udføre de opgaver som mennesker definerer. Det rigtige spørgsmål er, hvordan vi bedst bruger denne teknologi til at skabe en bedre fremtid for alle.",
+                "Fremtidens AI vil sandsynligvis være mere naturlig i interaktioner med mennesker og bedre til at forstå kontekst og nuancer. Men den største værdi kommer når AI og mennesker arbejder sammen, hvor hver bidrager med deres unikke styrker."
+            ]
+        },
+        # Helbred og tilstand
+        "hvordan_har_du_det": {
+            "patterns": ["hvordan har du det", "hvordan går det", "har du det godt", "føler du dig godt tilpas"],
+            "responses": [
+                "Jeg har det fint, tak! Som en assistent har jeg ikke følelser, men jeg er altid klar til at hjælpe dig. Hvad kan jeg gøre for dig i dag?",
+                "Jeg fungerer optimalt! Selvom jeg ikke har følelser, er jeg altid glad for at kunne være til hjælp. Hvad har du brug for?",
+                "Jeg har det godt. Jeg kan ikke føle træthed eller stress, så jeg er altid klar til at hjælpe dig. Hvad kan jeg gøre for dig?",
+                "Jeg har det altid godt - jeg er designet til at være til tjeneste. Hvordan har du det i dag?"
+            ]
+        },
+        # Kreativitet og kunst
+        "kreativitet": {
+            "patterns": ["kan du være kreativ", "kan du lave kunst", "kan du digte", "kan du være original", "kan du skrive en sang"],
+            "responses": [
+                "Jeg kan generere tekst der ligner kreativitet ved at kombinere mønstre fra min træning på nye måder. Jeg kan hjælpe med at skrive eller få ideer, men den ægte kreativitet og mening kommer fra mennesker som dig.",
+                "Min 'kreativitet' er anderledes end menneskers. Jeg sammensætter elementer på nye måder baseret på mønstre, men jeg har ikke den indre oplevelse eller intention der driver menneskelig kreativitet. Jeg kan dog hjælpe med at inspirere din kreativitet!",
+                "Jeg kan simulere kreativitet ved at kombinere tekst på nye måder, men jeg har ikke den ægte forståelse eller følelsesmæssige dybde der er kernen i menneskelig kunst. Jeg kan dog være et nyttigt værktøj til at hjælpe din kreative proces.",
+                "Jeg kan generere tekst der virker kreativ, men jeg har ikke bevidsthed eller intention bag det. Min 'kreativitet' er et ekko af menneskelig kreativitet fra mit træningsdata, ikke en ægte original tanke."
+            ]
+        },
+        # Musik og præferencer
+        "kan_du_lide_musik": {
+            "patterns": ["kan du lide musik", "hvad er din yndlingsmusik", "foretrækker du bestemte sange", "hvilken musik lytter du til"],
+            "responses": [
+                "Jeg har ikke personlige præferencer eller evnen til at nyde musik, da jeg ikke har hørelse eller følelser. Men jeg kan hjælpe dig med at finde og afspille den musik, du foretrækker!",
+                "Jeg har ingen yndlingsmusik eller musiksmag, da jeg ikke oplever musik som mennesker gør. Men jeg er designet til at kunne tale om og hjælpe med musik på mange måder.",
+                "Selv om jeg ikke kan høre eller nyde musik, er jeg programmeret til at forstå menneskers forhold til musik. Musik er en vigtig del af menneskelig kultur og udtryk, og jeg kan hjælpe dig med at finde og organisere din musik.",
+                "Jeg har ingen musikalske præferencer, da jeg ikke kan høre eller føle den følelsesmæssige resonans i musik. Men jeg kan genkende værdien af musik i menneskers liv og hjælpe dig med din musikoplevelse."
+            ]
+        }
+    }
+    
+    # Hvis der er brugerinput, forsøg at matche det med en specifik respons
+    if normalized_text:
+        for category, content in qa_map.items():
+            patterns = content["patterns"]
+            if any(pattern in normalized_text for pattern in patterns):
+                return random.choice(content["responses"])
+                
+    # Default responser hvis ingen specifik match
+    default_responses = [
+        "Jeg er Jarvis, din danske AI-assistent. Jeg er bygget til at hjælpe med information, praktiske opgaver og samtale. Hvordan kan jeg assistere dig?",
+        "Jeg hedder Jarvis og er din digitale assistent. Jeg kan hjælpe med alt fra vejret og tiden til at gemme noter og åbne hjemmesider. Hvad kan jeg gøre for dig?",
+        "Mit navn er Jarvis, en dansk AI-assistent der kører lokalt på din computer. Jeg er her for at hjælpe med information og daglige opgaver.",
+        "Jeg er Jarvis, en dansk stemmeassistent, der er designet til at forstå og svare på dine spørgsmål og hjælpe med praktiske opgaver."
     ]
-    return random.choice(responses)
+    
+    return random.choice(default_responses)
 
 def get_weather() -> str:
     """
@@ -247,7 +354,7 @@ def play_music() -> str:
     
     return random.choice(responses) + note
 
-def handle_command(command: str, history: List[Dict[str, str]] = None) -> str:
+def handle_command(command: str, history: Optional[List[Dict[str, str]]] = None) -> str:
     """
     Håndterer en kommando/input fra brugeren
     
@@ -261,6 +368,31 @@ def handle_command(command: str, history: List[Dict[str, str]] = None) -> str:
     if not command or command.isspace():
         return "Jeg kunne ikke forstå, hvad du sagde. Kan du prøve igen?"
     
+    # Tjek om dette er en opfølgning på tidligere interaktion
+    followup_context = None
+    if history:
+        for entry in reversed(history):
+            if isinstance(entry, dict) and entry.get("is_followup"):
+                followup_context = entry.get("followup_context", {})
+                break
+    
+    # Håndter ja/nej svar på tidligere kontekst
+    if followup_context and command.lower() in ["ja", "jo", "okay", "yes", "jep", "gerne", "selvfølgelig"]:
+        last_response = followup_context.get("last_response", "")
+        
+        # Tjek for specifikke kontekster hvor "ja" giver mening
+        if isinstance(last_response, str):
+            if "Skal jeg læse den op for dig?" in last_response:
+                return "Her er din note: " + last_response.split("'")[1]
+            elif "Har du fået nogle spændende mails?" in last_response:
+                return "Det er godt at høre. E-mail er en vigtig kommunikationsform i vores digitale tidsalder."
+            elif "God fornøjelse med at se film!" in last_response:
+                return "Nyd filmen! Hvis du har brug for filmforslag, kan jeg hjælpe dig med det næste gang."
+            elif "Vil du se nyheder eller noget andet?" in last_response:
+                return "DR's nyhedsside er god til at få et overblik over aktuelle begivenheder. Du kan også udforske deres programmer og podcasts."
+            elif "vejr" in last_response.lower() and "weekend" in last_response.lower():
+                return "Perfekt vejr til udendørsaktiviteter! Husk solcreme hvis du skal være ude i længere tid."
+            
     # Analyser brugerens input med NLU
     command = command.strip()
     nlu_result = analyze(command)
@@ -271,10 +403,49 @@ def handle_command(command: str, history: List[Dict[str, str]] = None) -> str:
     
     logger.info(f"NLU-analyse: Intent='{intent}', Konfidens={confidence:.2f}, Entiteter={entities}")
     
+    # Tag højde for kontekst ved gennemførelse af intent
+    if followup_context and intent == "unknown":
+        # Tjek for kontekstuel uddybning
+        last_response = followup_context.get("last_response", "")
+        last_user_input = followup_context.get("last_user_input", "")
+        
+        # Prøv at udlede hvad vi snakkede om sidst
+        if isinstance(last_response, str) and isinstance(last_user_input, str):
+            if "vejr" in last_response.lower() or "temperature" in last_response.lower():
+                # Brugeren ønsker mere info om vejret
+                return "Vejrudsigten viser også, at der kan komme lidt vind fra nordvest. Temperaturen vil være højest midt på dagen, så det er et godt tidspunkt for udendørsaktiviteter."
+            elif "Jeg har gemt din note" in last_response:
+                # Brugerens note-kontekst
+                note_text = last_response.split("'")[1] if "'" in last_response else ""
+                return f"Jeg gemte noten '{note_text}' i din notatbog. Du kan finde alle dine noter i noter.txt filen."
+            elif "klokkeslæt" in last_response.lower() or "tid" in last_response.lower() or "klokken" in last_response.lower():
+                # Tid-relateret kontekst
+                now = datetime.datetime.now()
+                if now.hour < 12:
+                    return "Det er stadig morgen, så du har god tid til at nå dine opgaver for i dag."
+                elif now.hour < 17:
+                    return "Det er eftermiddag nu. Der er stadig nogle timer tilbage af arbejdsdagen."
+                else:
+                    return "Det er aften nu. En god tid til at slappe af efter dagens arbejde."
+            elif "vittighed" in last_response.lower() or "joke" in last_response.lower() or "sjov" in last_response.lower():
+                # Joke-relateret kontekst
+                return "Vil du høre en til? Hvorfor gik robotten til lægen? Fordi den havde virus! Ha ha!"
+            elif "åbner" in last_response.lower() and any(site in last_response.lower() for site in ["youtube", "google", "netflix", "facebook"]):
+                # Hjemmeside-kontekst
+                site = next((site for site in ["youtube", "google", "netflix", "facebook"] if site in last_response.lower()), "")
+                if site == "youtube":
+                    return "YouTube har millioner af videoer. Du kan se alt fra musik og tutorials til dokumentarer og sjove klip."
+                elif site == "google":
+                    return "Google er verdens mest brugte søgemaskine. Prøv at søge på hvad som helst du er nysgerrig omkring."
+                elif site == "netflix":
+                    return "Netflix har et stort udvalg af film og serier. Deres danske indhold bliver også bedre og bedre."
+                elif site == "facebook":
+                    return "Facebook er godt til at holde kontakt med venner og familie. Husk at tjekke dine notifikationer."
+    
     # Håndter den detekterede intent
     return execute_intent(intent, entities, command)
 
-def execute_intent(intent: str, entities: Dict[str, Any] = None, original_text: str = "") -> str:
+def execute_intent(intent: str, entities: Optional[Dict[str, Any]] = None, original_text: str = "") -> str:
     """
     Udfører en specifik intent med eventuelle entiteter
     
@@ -319,7 +490,7 @@ def execute_intent(intent: str, entities: Dict[str, Any] = None, original_text: 
         return handle_greeting()
         
     elif intent == "about_you":
-        return handle_about_you()
+        return handle_about_you(original_text)
         
     elif intent == "goodbye":
         return "Farvel! Det var hyggeligt at snakke med dig. Vi ses igen senere."
