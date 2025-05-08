@@ -1,0 +1,58 @@
+{
+    "klokken": [
+        "hvad er klokken",
+        "hvad tid er det",
+        "klokken",
+        "hvor mange er klokken",
+        "kan du fortælle mig klokken"
+    ],
+    "youtube": [
+        "åbn youtube",
+        "start youtube",
+        "gå til youtube",
+        "vis mig youtube",
+        "luk youtube"
+    ],
+    "gmail": [
+        "åbn gmail",
+        "tjek min mail",
+        "vis mig min mail",
+        "åbn min mail",
+        "gmail"
+    ],
+    "gem_note": [
+        "gem en note",
+        "skriv en note",
+        "husk dette",
+        "gem dette",
+        "noter dette"
+    ],
+    "joke": [
+        "fortæl en joke",
+        "sig en joke",
+        "giv mig en joke",
+        "jeg vil høre en joke",
+        "kan du fortælle en joke"
+    ],
+    "stop_lyd": [
+        "stop lyden",
+        "hold mund",
+        "stop med at tale",
+        "stilhed",
+        "stop stemmen"
+    ],
+    "åbn_hjemmeside": [
+        "åbn hjemmeside",
+        "gå til hjemmeside",
+        "vis hjemmeside",
+        "start hjemmeside",
+        "luk hjemmeside"
+    ],
+    "gem_besked": [
+        "gem besked",
+        "skriv besked",
+        "husk besked",
+        "gem denne besked",
+        "noter besked"
+    ]
+} 
