@@ -357,8 +357,8 @@ def record_audio():
             wf.writeframes(b''.join(frames))
             wf.close()
             logger.info(f"Lyd gemt til {TEMP_WAV}")
-                return TEMP_WAV
-            else:
+            return TEMP_WAV
+        else:
             logger.info("Ingen lyd detekteret eller for kort lyd")
             return None
 
@@ -493,8 +493,8 @@ def get_best_response(command, training_data):
     if best_match and best_score > 0:
         return np.random.choice(best_match["responses"])
     
-        return None
-        
+    return None
+
 def learn_from_conversation(user_input, response):
     """Lær fra nye samtaler"""
     try:
@@ -702,7 +702,7 @@ def handle_command(command):
     
     elif "åbn" in command or "gå til" in command:
         if "youtube" in command:
-                webbrowser.open("https://www.youtube.com")
+            webbrowser.open("https://www.youtube.com")
             response = "Jeg åbner YouTube for dig. Hvad vil du se?"
         elif "google" in command:
             webbrowser.open("https://www.google.com")
@@ -713,8 +713,8 @@ def handle_command(command):
     elif "gem" in command and "note" in command:
         note = command.replace("gem", "").replace("note", "").strip()
         if note:
-        with open(NOTES_FILE, "a", encoding="utf-8") as f:
-                f.write(f"{note}\\n")
+            with open(NOTES_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{note}\n")
             response = f"Jeg har gemt din note. Skal jeg læse den op for dig?"
         else:
             response = "Hvad vil du have mig til at gemme som en note?"
@@ -756,34 +756,27 @@ async def continuous_listening():
     while True:
         try:
             audio_file_path = await record_audio_async()
-            
             if audio_file_path:
                 user_input = await transcribe_audio_async(audio_file_path)
-                
                 if user_input: 
                     logger.info(f"Bruger: {user_input}")
                     response = handle_command(user_input)
                     if response:
                         await speak_async(response)
-            
             if time.time() - last_error_time > ERROR_RESET_TIME:
                 ERROR_COUNT = 0
-            
             await asyncio.sleep(0.1)
-
-    except KeyboardInterrupt:
+        except KeyboardInterrupt:
             logger.info("Continuous listening afbrudt af bruger (KeyboardInterrupt).")
             break
         except Exception as e:
             ERROR_COUNT += 1
             logger.error(f"Fejl i continuous_listening loop: {e}")
             logger.error(traceback.format_exc())
-            
             if ERROR_COUNT >= MAX_ERRORS:
                 logger.error("For mange fejl i continuous_listening. Genstarter Jarvis funktioner...")
                 await speak_async("Jeg oplever nogle tekniske problemer og prøver at genstarte mine lyttefunktioner.")
                 ERROR_COUNT = 0
-            
             await asyncio.sleep(1)
 
 def cleanup_resources():
