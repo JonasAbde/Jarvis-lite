@@ -16,13 +16,24 @@ os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("logs/jarvis.log"), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler("logs/jarvis.log"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 # Importer kernekomponenter
 try:
-    from src.audio.speech import record_audio_async, transcribe_audio_async, speak_async
+    from src.audio.speech import (
+        record_audio_async,
+        transcribe_audio_async,
+        speak_async,
+    )
+    from src.audio.wakeword import (
+        initialize_wakeword_detector,
+        stop_wakeword_detector,
+    )
     from src.commands.handlers import handle_command
 
     # NLU-modul til intent-klassificering
@@ -30,13 +41,9 @@ try:
         import src.nlu as nlu
 
         NLU_AVAILABLE = True
-        logger.info(
-            f"NLU modul indlæst med følgende intents: {nlu.get_available_intents()}"
-        )
+        logger.info(f"NLU modul indlæst med følgende intents: {nlu.get_available_intents()}")
     except ImportError:
-        logger.warning(
-            "NLU-modul kunne ikke importeres. Kører med simpel kommandohåndtering."
-        )
+        logger.warning("NLU-modul kunne ikke importeres. Kører med simpel kommandohåndtering.")
         NLU_AVAILABLE = False
 
     # Forsøg at importere LLM-modellen, men fortsæt selv hvis det fejler
@@ -59,17 +66,19 @@ except ImportError as e:
 CONVERSATION_DIR = os.path.join("data", "conversations")
 CONVERSATION_FILE = os.path.join(CONVERSATION_DIR, "history.json")
 MAX_HISTORY = 10  # Maksimalt antal samtaler der gemmes
+USE_WAKEWORD = True  # Indstil til False for at deaktivere wakeword-detektion
 
 # Globale variable
 CONVERSATION_HISTORY = []
 ERROR_COUNT = 0
 MAX_ERRORS = 3
+LISTENING_FOR_COMMAND = False  # Flag til at styre aktiveringstilstand
 
 
 def save_conversation(user_input: str, response: str) -> None:
     """
     Gemmer en samtale til historikken
-
+    
     Args:
         user_input: Brugerens input
         response: Systemets svar
@@ -105,9 +114,7 @@ def load_conversation_history() -> None:
         if os.path.exists(CONVERSATION_FILE):
             with open(CONVERSATION_FILE, "r", encoding="utf-8") as f:
                 CONVERSATION_HISTORY = json.load(f)
-                logger.info(
-                    f"Indlæst {len(CONVERSATION_HISTORY)} samtaler fra historikken"
-                )
+                logger.info(f"Indlæst {len(CONVERSATION_HISTORY)} samtaler fra historikken")
     except Exception as e:
         logger.error(f"Fejl ved indlæsning af samtalehistorik: {e}")
         CONVERSATION_HISTORY = []
@@ -116,10 +123,10 @@ def load_conversation_history() -> None:
 async def process_command(user_input: str) -> str:
     """
     Behandler en kommando fra brugeren
-
+    
     Args:
         user_input: Brugerens input
-
+        
     Returns:
         Systemets svar
     """
@@ -160,56 +167,117 @@ async def process_command(user_input: str) -> str:
     return handle_command(user_input, CONVERSATION_HISTORY)
 
 
-async def continuous_listening() -> None:
-    """Hovedloop der lytter efter brugerinput"""
-    global ERROR_COUNT
+async def wakeword_detected_callback() -> None:
+    """Callback der bliver kaldt når wakeword detekteres"""
+    global LISTENING_FOR_COMMAND
+    
+    LISTENING_FOR_COMMAND = True
+    
+    # Afspil aktiveringsbekræftelse
+    await speak_async("Ja?")
+    
+    # Start kommandolytning
+    await listen_for_command()
 
+
+async def listen_for_command() -> None:
+    """Lytter efter en specifik kommando efter wakeword er aktiveret"""
+    global LISTENING_FOR_COMMAND, ERROR_COUNT
+    
+    try:
+        # Optag lyd til kommando
+        audio_file_path = await record_audio_async()
+        
+        if audio_file_path:
+            # Konverter til tekst
+            user_input = await transcribe_audio_async(audio_file_path)
+            
+            if user_input:
+                logger.info(f"Bruger: {user_input}")
+                
+                # Behandl kommando
+                response = await process_command(user_input)
+                
+                # Gem samtale
+                save_conversation(user_input, response)
+                
+                # Afspil svar
+                if response:
+                    logger.info(f"Jarvis: {response}")
+                    await speak_async(response)
+    
+    except Exception as e:
+        ERROR_COUNT += 1
+        logger.error(f"Fejl i kommandolytning: {e}")
+    
+    finally:
+        # Nulstil lyttetilstand uanset hvad
+        LISTENING_FOR_COMMAND = False
+
+
+async def continuous_listening() -> None:
+    """Hovedloop der lytter efter brugerinput eller wakeword"""
+    global ERROR_COUNT, LISTENING_FOR_COMMAND
+    
     logger.info("Jarvis er klar til at lytte...")
     await speak_async("Jarvis er klar")
-
+    
+    # Start wakeword-detektion hvis aktiveret
+    if USE_WAKEWORD:
+        await initialize_wakeword_detector(wakeword_detected_callback)
+        logger.info("Wakeword-detektion startet - sig 'Jarvis' for at aktivere")
+    
     try:
         while True:
             try:
-                # Optag lyd
-                audio_file_path = await record_audio_async()
-
-                if audio_file_path:
-                    # Konverter til tekst
-                    user_input = await transcribe_audio_async(audio_file_path)
-
-                    if user_input:
-                        logger.info(f"Bruger: {user_input}")
-
-                        # Behandl kommando
-                        response = await process_command(user_input)
-
-                        # Gem samtale
-                        save_conversation(user_input, response)
-
-                        # Afspil svar
-                        if response:
-                            logger.info(f"Jarvis: {response}")
-                            await speak_async(response)
-
+                # Hvis wakeword er deaktiveret eller vi lytter direkte efter kommando
+                if not USE_WAKEWORD:
+                    # Optag lyd
+                    audio_file_path = await record_audio_async()
+                    
+                    if audio_file_path:
+                        # Konverter til tekst
+                        user_input = await transcribe_audio_async(audio_file_path)
+                        
+                        if user_input:
+                            logger.info(f"Bruger: {user_input}")
+                            
+                            # Behandl kommando
+                            response = await process_command(user_input)
+                            
+                            # Gem samtale
+                            save_conversation(user_input, response)
+                            
+                            # Afspil svar
+                            if response:
+                                logger.info(f"Jarvis: {response}")
+                                await speak_async(response)
+                
+                # Vent lidt for at spare CPU
                 await asyncio.sleep(0.1)
-
+                
             except KeyboardInterrupt:
                 logger.info("Afbrudt af bruger (KeyboardInterrupt)")
                 break
-
+                
             except Exception as e:
                 ERROR_COUNT += 1
                 logger.error(f"Fejl i lytteloop: {e}")
-
+                
                 if ERROR_COUNT >= MAX_ERRORS:
                     logger.error("For mange fejl, genstarter...")
                     await speak_async("Jeg oplever tekniske problemer og genstarter.")
                     ERROR_COUNT = 0
-
+                    
                 await asyncio.sleep(1)
-
+                
     except KeyboardInterrupt:
         logger.info("Program afbrudt af bruger")
+    
+    finally:
+        # Stop wakeword-detektion
+        if USE_WAKEWORD:
+            await stop_wakeword_detector()
 
 
 def main() -> None:
@@ -217,22 +285,22 @@ def main() -> None:
     try:
         # Indlæs samtalehistorik
         load_conversation_history()
-
+        
         # Opret nødvendige mapper
         os.makedirs(os.path.join("data", "notes"), exist_ok=True)
         os.makedirs(os.path.join("src", "cache"), exist_ok=True)
         os.makedirs(os.path.join("src", "cache", "tts"), exist_ok=True)
         os.makedirs(os.path.join("src", "cache", "models"), exist_ok=True)
-
+        
         # Start lytteloop
         asyncio.run(continuous_listening())
-
+        
     except KeyboardInterrupt:
         logger.info("Afslutter...")
-
+    
     except Exception as e:
         logger.error(f"Kritisk fejl: {e}")
-
+        
     finally:
         logger.info("Jarvis Lite er lukket ned")
 
