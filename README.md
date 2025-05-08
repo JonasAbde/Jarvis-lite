@@ -1,22 +1,71 @@
-# Jarvis Lite 🤖
+# Jarvis-Lite
 
-Dansk, offline stemmeassistent bygget med OpenAI Whisper, scikit-learn og Keras.
+En dansk sprogbaseret AI assistent med tale-til-tekst og tekst-til-tale funktionalitet.
 
-> **Fuld dokumentation findes i** `docs/`:
-> * [OVERVIEW](docs/OVERVIEW.md) – projektbeskrivelse
-> * [SETUP](docs/SETUP.md) – installation (Python, venv, FFmpeg, CUDA-PyTorch)
-> * [USAGE](docs/USAGE.md) – kørsel & træning
+## Funktioner
 
-## Lynstart
+- Tale-til-tekst konvertering på dansk
+- Naturlig sprogforståelse
+- Tekst-til-tale output
+- Kommandohåndtering
+- Kontekstbevarende samtaler
+
+## Installation
+
+1. Klon repositoriet:
 ```bash
-# klon repo og gå ind i mappen
-python -m venv .venv & .\.venv\Scripts\activate
-pip install -r requirements.txt
-python jarvis_main.py
+git clone https://github.com/din-bruger/jarvis-lite.git
+cd jarvis-lite
 ```
 
-Jarvis lytter – tryk Ctrl+C for at afslutte.
+2. Opret et virtuelt miljø:
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
 
----
+# Linux/Mac
+python3 -m venv venv
+source venv/bin/activate
+```
 
-© 2025 Jarvis Lite-teamet
+3. Installer afhængigheder:
+```bash
+pip install -r requirements.txt
+```
+
+4. Opret en .env fil med dine API nøgler:
+```
+GOOGLE_API_KEY=din_google_api_nøgle
+```
+
+## Brug
+
+Start Jarvis:
+```bash
+python src/jarvis_main.py
+```
+
+Aktiver Jarvis ved at sige "Jarvis" og derefter din kommando.
+
+## Projektstruktur
+
+```
+jarvis-lite/
+├── src/                    # Kildekode
+│   ├── commands/          # Kommandohåndtering
+│   ├── data/             # Datafiler
+│   └── training/         # Træningsscripts
+├── tests/                 # Testfiler
+├── docs/                  # Dokumentation
+├── models/               # Gemte modeller
+└── config/               # Konfigurationsfiler
+```
+
+## Udvikling
+
+Se [udviklingsguiden](docs/development.rst) for detaljer om hvordan du bidrager til projektet.
+
+## Licens
+
+MIT License

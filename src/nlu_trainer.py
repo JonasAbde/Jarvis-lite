@@ -1,35 +1,52 @@
+"""
+Træn den danske intent-klassifikator for Jarvis-lite.
+Outputter (vectorizer, kalibreret klassifikator, intent-liste) → model.joblib
+"""
+
 import json
-import os
+import pathlib
 import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
+from sklearn.calibration import CalibratedClassifierCV
 
-# Sti til data og model
-DATA_PATH = "nlu_commands.json"
-MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "nlu_model.joblib")
-VECTORIZER_PATH = os.path.join(MODEL_DIR, "vectorizer.joblib")
+# Definer stier
+ROOT = pathlib.Path(__file__).resolve().parent
+DATA = ROOT / "data" / "nlu_commands.json"
+MODEL_PATH = ROOT / "nlu" / "model.joblib"
 
-# 1. Indlæs træningsdata
-with open(DATA_PATH, "r", encoding="utf-8") as f:
-    data = json.load(f)
+def train_nlu():
+    """Træn og gem NLU-modellen."""
+    print("[INFO] Indlæser træningsdata...")
+    with DATA.open(encoding="utf-8") as fp:
+        samples = json.load(fp)
 
-X = []
-y = []
-for intent in data["intents"]:
-    for ex in intent["examples"]:
-        X.append(ex)
-        y.append(intent["intent"])
+    # Forbered data
+    texts, labels = [], []
+    for intent, utterances in samples.items():
+        for u in utterances:
+            texts.append(u.lower())
+            labels.append(intent)
 
-# 2. Træn model
-vectorizer = TfidfVectorizer()
-X_vec = vectorizer.fit_transform(X)
-model = LogisticRegression(max_iter=1000)
-model.fit(X_vec, y)
+    print(f"[INFO] Træner på {len(texts)} eksempler med {len(set(labels))} intents")
+    
+    # Træn vectorizer
+    vec = TfidfVectorizer(
+        ngram_range=(1, 2),
+        analyzer="char",
+        lowercase=True
+    )
+    X = vec.fit_transform(texts)
+    
+    # Træn og kalibrer klassifikator
+    base = LogisticRegression(max_iter=1000, solver="lbfgs")
+    clf = CalibratedClassifierCV(base)  # Aktiverer predict_proba
+    clf.fit(X, labels)
+    
+    # Gem model
+    MODEL_PATH.parent.mkdir(exist_ok=True)
+    joblib.dump((vec, clf, sorted(set(labels))), MODEL_PATH)
+    print(f"✅ Model gemt i {MODEL_PATH.relative_to(ROOT)}")
 
-# 3. Gem model og vectorizer
-os.makedirs(MODEL_DIR, exist_ok=True)
-joblib.dump(model, MODEL_PATH)
-joblib.dump(vectorizer, VECTORIZER_PATH)
-print("[INFO] NLU-model og vectorizer gemt!")
+if __name__ == "__main__":
+    train_nlu()
