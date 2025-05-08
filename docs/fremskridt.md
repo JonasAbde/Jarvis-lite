@@ -15,12 +15,14 @@
 - ✅ Støjreduktion ved optagelse
 - ✅ TTS-cache system for hurtigere svar
 - ✅ Dansk tekst optimering
+- ✅ Wakeword-detektion ("Jarvis")
 
 #### NLU
 - ✅ Intent-klassificering med TF-IDF og LogReg
 - ✅ Konfidens-tærskel på 0,55
-- ✅ 9 grundlæggende intents implementeret
+- ✅ 11 grundlæggende intents implementeret
 - ✅ Simpel entitetsudtrækning
+- ✅ Udvidet træningsdatasæt (220 eksempler)
 
 #### LLM
 - ✅ Integration med chcaa/gpt2-medium-danish
@@ -32,6 +34,9 @@
 - ✅ Handler til alle implementerede intents
 - ✅ Integration med NLU til entitetsudtrækning
 - ✅ Tilpassede danske svar
+- ✅ Simuleret vejrtjeneste
+- ✅ Simuleret musikafspilning
+- ✅ Razmatisk understøttelse af hjemmesider
 
 #### Tests
 - ✅ Grundlæggende NLU tests
@@ -44,7 +49,6 @@
 
 #### Audio
 - ❌ GPU-acceleration for faster-whisper
-- ❌ Wakeword-detektion ("Jarvis")
 - ❌ Bedre lydkvalitetsoptimering
 
 #### NLU
@@ -59,9 +63,9 @@
 - ❌ Bedre formatering af svar
 
 #### Kommandoer
-- ❌ Kalender-integration
-- ❌ Vejr-information
-- ❌ Flere jokes og svar
+- ❌ Ægte kalender-integration
+- ❌ Ægte vejr-information 
+- ❌ Ægte musikafspilning
 - ❌ Brugerspecifikke indstillinger
 
 #### Tests
@@ -73,19 +77,19 @@
 ## Næste skridt
 
 ### Prioritet 1
-1. Træn NLU-model med flere eksempler
-2. Implementer wakeword-detektion
-3. Tilføj flere kommandoer (vejr, kalender)
+1. ✅ Træn NLU-model med flere eksempler
+2. ✅ Implementer wakeword-detektion
+3. ❌ Integration med ægte vejrtjeneste-API
 
 ### Prioritet 2
-1. Finetune LLM med danske eksempler
-2. Forbedre entitetsudtrækning
-3. Opret flere tests
+1. ❌ Finetune LLM med danske eksempler
+2. ❌ Forbedre entitetsudtrækning
+3. ❌ Opret flere tests
 
 ### Prioritet 3
-1. Implementer Config-fil system
-2. Skab bedre startup/shutdown scripts
-3. Byg CI/CD pipeline
+1. ❌ Implementer Config-fil system
+2. ❌ Skab bedre startup/shutdown scripts
+3. ❌ Byg CI/CD pipeline
 
 ## Tidslinje
 
@@ -95,7 +99,9 @@
 | 28. april 2025 | Første audio-prototype |
 | 2. maj 2025 | LLM-integration |
 | 8. maj 2025 | NLU-klassificering implementeret |
-| 15. maj 2025 (planlagt) | Wakeword-integration |
+| 8. maj 2025 | Wakeword-detektion implementeret ✅ |
+| 10. maj 2025 (planlagt) | Integration med vejr-API |
+| 15. maj 2025 (planlagt) | Musikafspilningsintegration |
 | 22. maj 2025 (planlagt) | Udvidede kommandoer |
 | 29. maj 2025 (planlagt) | Finetuning af LLM |
 | 6. juni 2025 (planlagt) | End-to-end tests |
