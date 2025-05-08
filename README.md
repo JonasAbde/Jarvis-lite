@@ -86,3 +86,15 @@ Se [udviklingsguiden](docs/development.rst) for detaljer om hvordan du bidrager 
 ## Licens
 
 MIT License
+
+### MCP-integration
+
+1. Klon & start lokal MCP-server (se `mcp-server/` submodule).
+2. Installer dep's: `pip install mcp`.
+3. Definér dine tools i `mcp-server/python/tools/`.
+4. Start server: `uvicorn mcp_server:app --reload`.
+5. Jarvis-Lite initialiserer `JarvisMCP` til `http://127.0.0.1:8000` og bruger:
+   - `push_context(...)`
+   - `get_context()`
+   - `invoke_tool(tool, args)`
+   - `save_state/load_state`

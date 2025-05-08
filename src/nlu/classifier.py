@@ -19,7 +19,7 @@ MODEL_PATH = pathlib.Path(__file__).parent / "model.joblib"
 class IntentClassifier:
     """Klassificerer brugerinput til intents med konfidensniveauer"""
 
-    def __init__(self, model_path: pathlib.Path = MODEL_PATH, threshold: float = 0.55):
+    def __init__(self, model_path: pathlib.Path = MODEL_PATH, threshold: float = 0.15):
         """
         Initialiserer intent klassifikatoren
 
@@ -74,6 +74,11 @@ class IntentClassifier:
         if not self.loaded and not self._load_model():
             return "unknown", 0.0
 
+        # Sikkerhedstjek for at undgå None-fejl
+        if self.vectorizer is None or self.classifier is None:
+            logger.error("Vectorizer eller classifier er None - kan ikke forudsige intent")
+            return "unknown", 0.0
+
         try:
             # Transformér tekst til feature-vektor
             X = self.vectorizer.transform([text.lower()])
@@ -113,24 +118,138 @@ class IntentClassifier:
             Dict med entiteter
         """
         entities = {}
+        normalized_text = text.lower()
 
         # Simpel entitetsudtrækning baseret på intent
         if intent == "open_website":
-            # Forsøg at udtrække hjemmesidenavn
-            lower_text = text.lower()
-            for site in ["youtube", "google", "dr", "dr.dk"]:
-                if site in lower_text:
+            # Definér et hierarki af almindelige websites med både forkortelser og fulde navne
+            website_map = {
+                # Video og medier
+                "youtube": ["youtube", "yt", "you tube", "se video", "se videoer"],
+                "netflix": ["netflix", "movies", "film", "serier", "series", "se film", "se en film"],
+                "tv2": ["tv2", "tv 2", "tv2.dk", "tv 2 play", "nyheder fra tv2", "nyheder på tv2"],
+                "dr": ["dr", "dr.dk", "dr1", "dr2", "dr nyheder", "danmarks radio", "dr tv"],
+                
+                # Sociale medier og kommunikation
+                "facebook": ["facebook", "fb", "meta", "sociale medier"],
+                "instagram": ["instagram", "insta", "ig", "billeder"], 
+                "twitter": ["twitter", "x", "tweet", "tweets"],
+                "gmail": ["gmail", "google mail", "e-mail", "email", "mail", "post"],
+                
+                # Søgning og information
+                "google": ["google", "søg", "search", "søgemaskine", "søgning"],
+                "wikipedia": ["wiki", "wikipedia", "leksikon", "encyklopædi", "opslagsværk"],
+                
+                # Shopping
+                "amazon": ["amazon", "webshop", "køb", "shopping", "shop"],
+                "zalando": ["zalando", "tøj", "køb tøj", "købe tøj"]
+            }
+            
+            # Søg efter matches i teksten
+            for site, keywords in website_map.items():
+                if any(keyword in normalized_text for keyword in keywords):
                     entities["site"] = site
                     break
+            
+            # Hvis ingen bestemt side er specificeret, men åbn/vis/gå til hjemmeside er nævnt
+            if "site" not in entities:
+                for word in ["åbn", "åben", "vis", "start", "browser", "hjemmeside", "internet", "online", "web", "www"]:
+                    if word in normalized_text:
+                        entities["site"] = "google"
+                        break
 
         elif intent == "save_note":
             # Udtræk notetekst (fjern kommandoordene)
-            note_text = text.lower()
-            for word in ["gem", "note", "skriv", "husk"]:
-                note_text = note_text.replace(word, "")
+            note_text = normalized_text
+            command_words = ["gem", "note", "skriv", "husk", "noter", "påmindelse",
+                         "huskeliste", "opret", "tilføj", "lav", "notér", "skriv ned", "husk på"]
+            
+            # Fjern kommandoord med mellemrum efter
+            for word in command_words:
+                if word + " " in note_text:
+                    note_text = note_text.replace(word + " ", "")
+                elif word in note_text:
+                    note_text = note_text.replace(word, "")
+            
+            # Fjern "en" og "et"
+            note_text = note_text.replace(" en ", " ").replace(" et ", " ").replace(" at ", " ")
+            
+            # Fjern "for mig", "til mig", etc.
+            for phrase in [" for mig", " til mig", " til senere", " jeg skal"]:
+                note_text = note_text.replace(phrase, "")
+            
             note_text = note_text.strip()
             if note_text:
                 entities["text"] = note_text
+
+        elif intent == "play_music":
+            # Udtræk genre hvis angivet med mere avanceret detektion
+            genre_map = {
+                "pop": ["pop", "popmusik", "populær musik", "hitliste", "top 50", "populært"],
+                "rock": ["rock", "rockmusik", "metal", "hard rock", "heavy", "punk"],
+                "jazz": ["jazz", "blues", "soul"],
+                "klassisk": ["klassisk", "classical", "klassisk musik", "orkester", "symphony", "mozart", "beethoven", "chopin", "bach"],
+                "elektronisk": ["elektronisk", "techno", "house", "edm", "dance", "dj", "electro", "trance", "dubstep", "drum and bass", "d&b"],
+                "hiphop": ["hip hop", "hiphop", "rap", "hip-hop", "r&b", "rnb"],
+                "country": ["country", "western"],
+                "folk": ["folk", "folkemusik", "nordisk", "traditionel"],
+                "reggae": ["reggae", "dancehall", "jamaica"],
+                "ambient": ["ambient", "afslapning", "meditation", "afslappende", "beroligende", "stille"],
+                "dansk": ["dansk", "danske hits", "danske sange", "dansk musik", "på dansk"]
+            }
+            
+            # Tjek for genrer
+            for genre, keywords in genre_map.items():
+                if any(keyword in normalized_text for keyword in keywords):
+                    entities["genre"] = genre
+                    break
+            
+            # Tjek for bestemt kunstner/band
+            artist_keywords = ["af", "med", "fra", "by", "kunstner", "sanger", "band", "gruppe"]
+            
+            for keyword in artist_keywords:
+                if keyword + " " in normalized_text:
+                    parts = normalized_text.split(keyword + " ", 1)
+                    if len(parts) > 1 and parts[1].strip():
+                        entities["artist"] = parts[1].strip()
+                        break
+                        
+            # Tjek for generel musikafspilning
+            general_music = ["musik", "sang", "number", "track", "playlist", "spilleliste", "favorit"]
+            if any(word in normalized_text for word in general_music) and "genre" not in entities and "artist" not in entities:
+                entities["type"] = "general"
+
+        elif intent == "get_weather":
+            # Tid for vejrudsigt - i dag/i morgen/weekend
+            time_indicators = {
+                "now": ["nu", "lige nu", "i øjeblikket", "i dag", "vejret", "temperaturen", "aktuelle", "aktuelt"],
+                "tomorrow": ["i morgen", "næste dag", "kommende dag", "til i morgen"],
+                "weekend": ["weekend", "i weekenden", "lørdag", "søndag", "weekenden", "til weekend"],
+                "week": ["uge", "ugen", "næste uge", "kommende uge", "de næste dage", "kommende dage", "fremover"]
+            }
+            
+            # Find tid
+            for time, keywords in time_indicators.items():
+                if any(keyword in normalized_text for keyword in keywords):
+                    entities["time"] = time
+                    break
+                    
+            # Hvis ingen tid er angivet, brug "now"
+            if "time" not in entities:
+                entities["time"] = "now"
+                
+            # Lokation (ikke implementeret endnu, men forbereder strukturen)
+            if "i " in normalized_text and " i " in normalized_text:
+                parts = normalized_text.split(" i ")
+                if len(parts) > 1:
+                    # Tag den sidste del efter "i" som kan indeholde en lokation
+                    location_part = parts[-1].strip()
+                    # Fjern stopord fra enden
+                    for stopword in ["dag", "morgen", "aften", "weekenden", "nu"]:
+                        if location_part.endswith(stopword):
+                            location_part = location_part[:-len(stopword)].strip()
+                    if location_part and len(location_part) > 2:
+                        entities["location"] = location_part
 
         return entities
 
@@ -171,7 +290,7 @@ class IntentClassifier:
 classifier = IntentClassifier()
 
 
-def predict(text: str, threshold: float = 0.55) -> Tuple[str, float]:
+def predict(text: str, threshold: float = 0.15) -> Tuple[str, float]:
     """
     Forudsiger intent for en given tekst (global funktion)
 

@@ -25,20 +25,20 @@ logger = logging.getLogger(__name__)
 
 # Importer kernekomponenter
 try:
-    from src.audio.speech import (
+    from audio.speech import (
         record_audio_async,
         transcribe_audio_async,
         speak_async,
     )
-    from src.audio.wakeword import (
+    from audio.wakeword import (
         initialize_wakeword_detector,
         stop_wakeword_detector,
     )
-    from src.commands.handlers import handle_command
+    from commands.handlers import handle_command
 
     # NLU-modul til intent-klassificering
     try:
-        import src.nlu as nlu
+        import nlu as nlu
 
         NLU_AVAILABLE = True
         logger.info(f"NLU modul indlæst med følgende intents: {nlu.get_available_intents()}")
@@ -48,7 +48,7 @@ try:
 
     # Forsøg at importere LLM-modellen, men fortsæt selv hvis det fejler
     try:
-        from src.llm.model import is_model_available, generate_response
+        from llm.model import is_model_available, generate_response
 
         LLM_AVAILABLE = is_model_available()
         if LLM_AVAILABLE:
@@ -66,7 +66,7 @@ except ImportError as e:
 CONVERSATION_DIR = os.path.join("data", "conversations")
 CONVERSATION_FILE = os.path.join(CONVERSATION_DIR, "history.json")
 MAX_HISTORY = 10  # Maksimalt antal samtaler der gemmes
-USE_WAKEWORD = True  # Indstil til False for at deaktivere wakeword-detektion
+USE_WAKEWORD = False  # Indstil til False for at deaktivere wakeword-detektion
 
 # Globale variable
 CONVERSATION_HISTORY = []
@@ -122,7 +122,7 @@ def load_conversation_history() -> None:
 
 async def process_command(user_input: str) -> str:
     """
-    Behandler en kommando fra brugeren
+    Behandler en kommando fra brugeren med forbedret kontekstforståelse
     
     Args:
         user_input: Brugerens input
@@ -133,7 +133,46 @@ async def process_command(user_input: str) -> str:
     if not user_input or user_input.isspace():
         return "Jeg kunne ikke forstå, hvad du sagde. Kan du prøve igen?"
 
-    # Først tjek om det er en NLU-genkendelig kommando med høj konfidens
+    # Først tjek om det er en fortsættelse af en tidligere samtale
+    # ved at se på de seneste indlæg i samtalehistorikken
+    is_followup = False
+    followup_context = None
+    
+    if CONVERSATION_HISTORY:
+        # Se på det seneste svar
+        last_exchange = CONVERSATION_HISTORY[-1]
+        last_response = last_exchange.get("assistant", "")
+        
+        # Tjek for kontekst-markører i brugerinput
+        followup_indicators = ["ja", "nej", "det", "den", "de", "hvorfor", "hvordan", 
+                              "hvad med", "ok", "fint", "godt", "næste", "fortsæt", 
+                              "uddyb", "fortæl mere", "og", "hvad så"]
+        
+        # Tjek for korte følge-forespørgsler
+        if (len(user_input.split()) <= 3 and 
+            any(user_input.lower().startswith(ind) for ind in followup_indicators)):
+            is_followup = True
+            
+        # Tjek for uddybningsanmodninger
+        elif any(marker in user_input.lower() for marker in ["mere om det", "uddyb", "fortsæt", "fortæl mere"]):
+            is_followup = True
+            
+        # Hvis svaret endte med spørgsmål, behandl input som et svar på det
+        if "?" in last_response.split(".")[-1] or "Vil du" in last_response or "Skal jeg" in last_response:
+            is_followup = True
+            
+        # For ja/nej respons til et spørgsmål
+        if user_input.lower() in ["ja", "jo", "okay", "yes", "jep", "gerne", "selvfølgelig", "nej", "no", "ikke", "næh"]:
+            is_followup = True
+            
+        if is_followup:
+            logger.info(f"Detekteret følgespørgsmål/svar relateret til tidligere kontekst")
+            followup_context = {
+                "last_user_input": last_exchange.get("user", ""),
+                "last_response": last_response
+            }
+
+    # Først tjek om det er en NLU-genkendelig kommando
     if NLU_AVAILABLE:
         try:
             nlu_result = nlu.analyze(user_input)
@@ -143,11 +182,20 @@ async def process_command(user_input: str) -> str:
             # Log NLU-resultatet
             logger.info(f"NLU: Intent='{intent}', Konfidens={confidence:.2f}")
 
-            # Hvis vi har en intent med høj konfidens, der ikke er 'unknown',
-            # og det ikke er en general-samtale intent, brug kommandohåndtering
-            if intent != "unknown" and confidence > 0.7:
-                if intent not in ["greeting", "goodbye", "about_you"]:
-                    logger.info(f"Bruger kommandohåndtering for intent: {intent}")
+            # Hvis vi har en intent der ikke er 'unknown', brug kommandohåndtering
+            if intent != "unknown":
+                logger.info(f"Bruger kommandohåndtering for intent: {intent}")
+                
+                # Videregivelse af kontekst hvis det er en følgespørgsmål
+                if is_followup and followup_context:
+                    # Tilføj vores egen kontekstinformation til historikken
+                    context_history = CONVERSATION_HISTORY.copy()
+                    context_history.append({
+                        "followup_context": followup_context,
+                        "is_followup": True
+                    })
+                    return handle_command(user_input, context_history)
+                else:
                     return handle_command(user_input, CONVERSATION_HISTORY)
         except Exception as e:
             logger.error(f"Fejl ved NLU-analyse: {e}")
@@ -156,7 +204,15 @@ async def process_command(user_input: str) -> str:
     if LLM_AVAILABLE:
         try:
             logger.info("Bruger LLM til at generere svar")
-            response = generate_response(user_input, CONVERSATION_HISTORY)
+            
+            # Hvis det er en følgespørgsmål, tilføj kontekst
+            if is_followup and followup_context:
+                # Forbered udvidet kontekst til LLM
+                enriched_input = f"{followup_context['last_user_input']} -> {followup_context['last_response']} -> {user_input}"
+                response = generate_response(enriched_input, CONVERSATION_HISTORY)
+            else:
+                response = generate_response(user_input, CONVERSATION_HISTORY)
+                
             if response:
                 return response
         except Exception as e:
@@ -164,7 +220,12 @@ async def process_command(user_input: str) -> str:
 
     # Fallback til kommandohåndtering
     logger.info("Bruger kommandohåndtering som fallback")
-    return handle_command(user_input, CONVERSATION_HISTORY)
+    try:
+        return handle_command(user_input, CONVERSATION_HISTORY)
+    except Exception as e:
+        logger.error(f"Fejl i kommandohåndtering: {e}")
+        # Sidste fallback
+        return "Jeg forstod desværre ikke det. Prøv at spørge mig om noget andet, f.eks. tiden, vejret eller en joke."
 
 
 async def wakeword_detected_callback() -> None:
