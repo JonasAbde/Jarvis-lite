@@ -1,0 +1,18 @@
+[flake8]
+max-line-length = 100
+exclude = .git,__pycache__,build,dist,venv,.venv
+ignore = 
+    # Blank line contains whitespace
+    W293,
+    # Line break before binary operator
+    W503,
+    # Trailing whitespace
+    W291,
+    # Missing docstring in public module/class/method
+    D100,D101,D102,D103
+    # Line too long
+    E501
+    # Too many blank lines
+    E303
+    # Expected 2 blank lines
+    E302,E305 
