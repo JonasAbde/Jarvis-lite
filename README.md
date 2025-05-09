@@ -98,3 +98,30 @@ MIT License
    - `get_context()`
    - `invoke_tool(tool, args)`
    - `save_state/load_state`
+
+## Quick Start på enhver PC
+
+For at arbejde med Jarvis-Lite på enhver PC (uden at starte forfra hver gang):
+
+1. **Første gang på en ny PC:**
+   ```powershell
+   git clone https://github.com/JonasAbde/Jarvis-lite.git
+   cd Jarvis-lite
+   ./setup_jarvis.ps1
+   ```
+   Dette script:
+   - Tjekker og kloner repository
+   - Initialiserer submoduler (mcp-server)
+   - Opsætter virtuelt miljø og installerer afhængigheder
+   - Opretter nødvendige mapper og filer (inkl. `__init__.py`)
+
+2. **Start Jarvis med én kommando:**
+   ```powershell
+   ./start_jarvis.ps1
+   ```
+   Dette script:
+   - Aktiverer venv
+   - Starter MCP-server i et separat PowerShell-vindue
+   - Starter Jarvis-hovedapp med korrekt PYTHONPATH
+
+Denne løsning sikrer et konsistent udviklingsmiljø på tværs af forskellige computere.
