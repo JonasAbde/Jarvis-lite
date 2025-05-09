@@ -1,127 +1,99 @@
-# Jarvis Lite
+# Jarvis-Lite
 
-**Jarvis Lite** er en dansk AI-assistent, der kører lokalt på din PC. Jarvis Lite kan lytte til din tale, forstå indholdet, udføre opgaver og svare med både tekst og stemme.
+En dansk offline stemmeassistent udviklet med Python.
 
-## Projektbeskrivelse
+## Status (Maj 2025)
 
-Jarvis Lite omfatter:
-- Optagelse af lyd og omdannelse til tekst via tale-til-tekst (STT) med faster-whisper
-- Forståelse af brugerens input med NLU-klassificering og en dansk LLM-model
-- Generering af svar og afspilning via tekst-til-tale (TTS) med gTTS
-- Lagring af samtalehistorik for bedre kontekst i dialogen
-- Offline-kørsel med lokal model
+Vi har arbejdet med Jarvis-Lite, en dansk offline stemmeassistent. Assistenten har udfordringer med NLU-genkendelse (Natural Language Understanding), hvor der er problemer med at finde den korrekte model.
 
-## Formål
+### Hvad vi har lavet
 
-Formålet er at demonstrere, hvordan man bygger en dansk sprogbaseret AI-assistent med fuld offline-funktionalitet. Projektet fokuserer på at opnå naturlig dansk interaktion med brugeren.
+1. Gentrænet NLU-modellen med 224 træningseksempler fordelt på 18 intentioner
+2. Sikret at modellen gemmes i den korrekte mappe
+3. Fikset importen mellem moduler ved at tilrette `_load_model` i classifier.py
+4. Identificeret hovedproblemet: API-serveren kører i "simuleret tilstand" fordi den ikke kan indlæse kernemodulerne korrekt
 
-## Projektstruktur
+### Aktuel status
 
-```
-jarvis-lite/
-├── src/                  # Kildekode
-│   ├── audio/           # STT og TTS funktionalitet
-│   ├── llm/             # Sprogmodel og inferens
-│   ├── nlu/             # Intent-klassificering
-│   ├── commands/        # Kommandohåndtering
-│   ├── data/            # Datafiler
-│   ├── training/        # Træningsscripts
-│   ├── cache/           # Cache til modeller og TTS
-│   ├── jarvis.py        # Hovedprogram
-│   └── demo.py          # Demo-version uden afhængigheder
-├── tests/                # Testfiler
-├── docs/                 # Dokumentation
-├── models/               # Gemte modeller
-├── data/                 # Eksterne data (samtaler, stemmemodeller)
-├── logs/                 # Logfiler
-└── config/               # Konfigurationsfiler
-```
+- NLU-modellen trænes med ca. 47% nøjagtighed
+- API-serveren kan startes, men kører stadig i simuleret tilstand
+- Klassifikatoren forsøger at indlæse modellen, men får fejl med import
+- Brugergrænsefladen viser standard-svar, når den ikke kan forstå forespørgsler
+
+### Udestående opgaver
+
+1. Fikse import-problemer i NLU-klassifikatoren
+2. Forbedre NLU-modellens træningsdata (specielt for 'identity' intent)
+3. Implementere korrekt integration mellem API-server og Jarvis kernemodulerne
+4. Oprette config/commands.yaml til dynamiske kommandoer
+5. Implementere fallback-logik når NLU-modellen ikke kan genkende intents
 
 ## Installation
 
-1. Klon repositoriet:
-```bash
-git clone https://github.com/din-bruger/jarvis-lite.git
-cd jarvis-lite
-```
+### Forudsætninger
 
-2. Opret et virtuelt miljø:
-```bash
-# Windows
-python -m venv venv
-venv\Scripts\activate
+- Python 3.11 eller nyere
+- pip (Python Package Manager)
+- Windows 10 eller nyere (testet på Windows 10.0.26100)
 
-# Linux/Mac
-python3 -m venv venv
-source venv/bin/activate
-```
+### Trin-for-trin installation
 
-3. Installer afhængigheder:
-```bash
-pip install -r requirements.txt
-```
+1. **Klon repositoriet**
+   ```bash
+   git clone https://github.com/dit-username/Jarvis-lite.git
+   cd Jarvis-lite
+   ```
 
-## Brug
+2. **Opsæt virtuelt miljø**
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
 
-Start Jarvis:
-```bash
-python src/jarvis.py
-```
+3. **Installer dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Jarvis lytter efter din stemme og forsøger at forstå og besvare dine spørgsmål eller udføre kommandoer.
+4. **Træn NLU-modellen**
+   ```bash
+   cd src/nlu/training
+   python train_model.py
+   cd ../../..
+   ```
 
-## Funktioner
+5. **Start API-serveren**
+   ```bash
+   python src/api_server.py
+   ```
 
-- Tale-til-tekst konvertering på dansk med faster-whisper
-- Intent-genkendelse med TF-IDF og LogReg (konfidens-tærskel 0,55)
-- GPT-2 dansk model til naturlige svar
-- Tekst-til-tale med dansk optimering
-- Kontekstbevarende samtaler
-- Lydoptagelse med støjreduktion
+6. **Åbn web-grænsefladen**
+   Besøg [http://localhost:8000](http://localhost:8000) i din webbrowser
 
-## Udvikling
+## Arkitektur
 
-Se [udviklingsguiden](docs/development.rst) for detaljer om hvordan du bidrager til projektet.
+### Hovedkomponenter
+- **API-server (api_server.py)**: FastAPI-baseret server til frontend kommunikation
+- **Jarvis (jarvis.py)**: Kernelogik for stemmeassistenten
+- **NLU (nlu/classifier.py)**: Natural Language Understanding model
+- **Audio (audio/speech.py)**: Stemmegengivelse og -genkendelse
+
+### Kendte problemer
+1. Import-cirkelreference mellem moduler
+2. NLU-model indlæses ikke korrekt
+3. Konfigurations-filer mangler eller indlæses ikke
+4. Forkert sti til modelfilerne
+
+## Bidrag til projektet
+
+Vil du bidrage til projektet? Her er hvordan:
+
+1. Fork repositoriet
+2. Opret en feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit dine ændringer (`git commit -m 'feat: Tilføj en fantastisk feature'`)
+4. Push til branchen (`git push origin feature/amazing-feature`)
+5. Opret et Pull Request
 
 ## Licens
 
-MIT License
-
-### MCP-integration
-
-1. Klon & start lokal MCP-server (se `mcp-server/` submodule).
-2. Installer dep's: `pip install mcp`.
-3. Definér dine tools i `mcp-server/python/tools/`.
-4. Start server: `uvicorn mcp_server:app --reload`.
-5. Jarvis-Lite initialiserer `JarvisMCP` til `http://127.0.0.1:8000` og bruger:
-   - `push_context(...)`
-   - `get_context()`
-   - `invoke_tool(tool, args)`
-   - `save_state/load_state`
-
-## Quick Start på enhver PC
-
-For at arbejde med Jarvis-Lite på enhver PC (uden at starte forfra hver gang):
-
-1. **Første gang på en ny PC:**
-   ```powershell
-   git clone https://github.com/JonasAbde/Jarvis-lite.git
-   cd Jarvis-lite
-   ./setup_jarvis.ps1
-   ```
-   Dette script:
-   - Tjekker og kloner repository
-   - Initialiserer submoduler (mcp-server)
-   - Opsætter virtuelt miljø og installerer afhængigheder
-   - Opretter nødvendige mapper og filer (inkl. `__init__.py`)
-
-2. **Start Jarvis med én kommando:**
-   ```powershell
-   ./start_jarvis.ps1
-   ```
-   Dette script:
-   - Aktiverer venv
-   - Starter MCP-server i et separat PowerShell-vindue
-   - Starter Jarvis-hovedapp med korrekt PYTHONPATH
-
-Denne løsning sikrer et konsistent udviklingsmiljø på tværs af forskellige computere.
+Dette projekt er licenseret under MIT-licensen - se LICENSE-filen for detaljer.
