@@ -237,4 +237,8 @@ temp_recording.wav
 *.tmp
 
 # Log files
-logs/*.log 
+logs/*.log
+
+# Eksplicitet inkluder .cursor mapper for synkronisering
+!.cursor/
+!.cursor/**/* 
