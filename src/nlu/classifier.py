@@ -248,47 +248,75 @@ class NLUClassifier:
 
         if not isinstance(text, str) or not text.strip():
             logger.debug("Tom input tekst til predict, returnerer None.")
-            return None
-
-        preprocessed_text = preprocess_text_danish(text) # Forbehandl på samme måde som træningsdata
-        if not preprocessed_text:
-             logger.debug("Tekst blev tom efter forbehandling, returnerer None.")
-             return None
+            return None # Tilføjet eksplicit None return for klarhed
 
         try:
-            # Forudsig sandsynligheder for hver klasse
-            probabilities = self.pipeline.predict_proba([preprocessed_text])[0]
-            
-            # Find indekset for klassen med højest sandsynlighed
-            best_proba_index = np.argmax(probabilities)
-            confidence = probabilities[best_proba_index]
-            
-            predicted_intent_tag = self.pipeline.classes_[best_proba_index] # Direkte fra pipeline.classes_
+            # Forbehandl teksten
+            processed_text = preprocess_text_danish(text)
+            if not processed_text:
+                logger.debug(f"Input tekst gav tom forbehandlet tekst: '{text}'. Kan ikke forudsige.")
+                # Selvom forbehandling gav tom streng, kan vi stadig logge den oprindelige tekst med lav konfidens
+                predicted_intent_tag = "no_tokens"
+                confidence = 0.0
+                # Log lav-konfidens forudsigelser for senere gennemgang/træning
+                LOW_CONF_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "low_confidence_log.txt") # Korrekt sti
+                try:
+                    os.makedirs(os.path.dirname(LOW_CONF_FILE), exist_ok=True)
+                    with open(LOW_CONF_FILE, "a", encoding="utf-8") as f:
+                        log_entry = {"text": text,
+                                     "guess": predicted_intent_tag,
+                                     "confidence": float(confidence)}
+                        f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                    logger.debug(f"Logged low confidence prediction for '{text}': {predicted_intent_tag} ({confidence:.2f})")
+                except Exception as e:
+                    logger.error(f"Fejl under logning til low_confidence_log.txt: {e}")
 
-            all_probabilities_sorted = sorted(
-                [{"intent": self.pipeline.classes_[i], "confidence": float(probabilities[i])} for i in range(len(probabilities))],
-                key=lambda x: x["confidence"],
-                reverse=True
-            )
+                return None # Returner None da ingen meningsfuld forudsigelse kunne laves
+                
+            # Anvend pipeline til at få sandsynligheder for hver intent
+            probabilities = self.pipeline.predict_proba([processed_text])[0] # predict_proba forudsiger sandsynligheder
 
+            # Find intent med højeste sandsynlighed
+            max_prob_index = np.argmax(probabilities)
+            predicted_intent_tag = self.intent_labels[max_prob_index]
+            confidence = probabilities[max_prob_index]
+
+            # Opret liste af alle intents med deres sandsynligheder
+            all_probabilities = [
+                {"intent": self.intent_labels[i], "confidence": float(probabilities[i])}
+                for i in range(len(self.intent_labels))
+            ]
+            
+            # Log lav-konfidens forudsigelser for senere gennemgang/træning
+            LOW_CONF_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "low_confidence_log.txt") # Korrekt sti
+            if confidence < confidence_threshold:
+                 try:
+                     os.makedirs(os.path.dirname(LOW_CONF_FILE), exist_ok=True)
+                     with open(LOW_CONF_FILE, "a", encoding="utf-8") as f:
+                         # Sørg for at predicted_intent_tag er defineret. 
+                         # Hvis prediction fejler eller confidence er lav, er der måske ikke en tag.
+                         # Brug 'unknown' eller predicted_intent_tag hvis den findes.
+                         predicted_intent_tag_to_log = predicted_intent_tag if predicted_intent_tag else "unknown"
+
+                         log_entry = {"text": text, 
+                                      "guess": predicted_intent_tag_to_log, 
+                                      "confidence": float(confidence)}
+                         f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                     logger.debug(f"Logged low confidence prediction for '{text}': {predicted_intent_tag_to_log} ({confidence:.2f})")
+                 except Exception as e:
+                     logger.error(f"Fejl under logning til low_confidence_log.txt: {e}")
+
+            # Returner intent og konfidens hvis konfidensen er over tærsklen
             if confidence >= confidence_threshold:
-                logger.info(f"Intent forudsagt: '{predicted_intent_tag}' med konfidens: {confidence:.4f} for tekst: '{text}'")
-                return {
-                    "intent": predicted_intent_tag,
-                    "confidence": float(confidence),
-                    "all_probabilities": all_probabilities_sorted
-                }
+                logger.info(f"Intent genkendt: '{predicted_intent_tag}' med konfidens {confidence:.2f}")
+                return {"intent": predicted_intent_tag, "confidence": confidence, "all_probabilities": all_probabilities}
             else:
-                logger.info(f"Intent '{predicted_intent_tag}' forudsagt for '{text}', men konfidens ({confidence:.4f}) er under tærskel ({confidence_threshold}). Returnerer 'unknown'.")
-                # Overvej at returnere 'unknown' intent eller den mest sandsynlige med lav konfidens
-                return {
-                    "intent": "unknown", # Eller predicted_intent_tag
-                    "confidence": float(confidence), # Stadig returner den faktiske konfidens
-                    "all_probabilities": all_probabilities_sorted
-                }
+                logger.info(f"Lav konfidens for intent '{predicted_intent_tag}' ({confidence:.2f} < {confidence_threshold:.2f}). Returnerer ukendt.")
+                return {"intent": "unknown", "confidence": confidence, "all_probabilities": all_probabilities}
+
         except Exception as e:
-            logger.error(f"Fejl under forudsigelse af intent for tekst '{text}': {e}")
-            return None
+            logger.error(f"Fejl under NLU analyse af tekst '{text}': {e}", exc_info=True)
+            return None # Returner None ved fejl
 
     def get_available_intents(self) -> List[str]:
         """Returnerer en liste over de kendte intent labels."""
