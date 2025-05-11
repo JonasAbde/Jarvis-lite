@@ -1,16 +1,40 @@
-SpeechRecognition==3.14.2
-PyAudio==0.2.14
-faster-whisper==1.1.1
-numpy==2.2.5
-soundfile==0.13.1
-gtts==2.5.4
+# Basiskrav
+numpy>=1.21.0
+scipy>=1.7.0
+scikit-learn>=1.0.0
+joblib>=1.0.0
+nltk>=3.9.0
+
+# Sprogmodeller
+torch>=2.0.0
+transformers>=4.30.0
+huggingface-hub>=0.16.0
+
+# Tale-til-tekst (STT)
+faster-whisper>=0.9.0
+sounddevice>=0.4.5
+soundfile>=0.10.3
+pyaudio>=0.2.11
+
+# Tekst-til-tale (TTS)
+gtts>=2.5.0
 playsound==1.2.2
-requests
-librosa==0.11.0
-scikit-learn==1.6.1
-sounddevice==0.5.1
-joblib==1.4.2
-torch
-pyttsx3
-danspeech==0.0.1
-simpleaudio; platform_system == "Linux" or platform_system == "Darwin"
+
+# Udvikling og tests
+pytest>=7.0.0
+pytest-cov>=4.0.0
+mypy>=1.0.0
+black>=23.0.0
+flake8>=6.0.0
+
+# MCP-integration
+mcp
+
+# Web API og UI
+fastapi>=0.104.0
+uvicorn>=0.23.2
+websockets>=11.0.3
+python-multipart>=0.0.6
+jinja2>=3.1.2
+aiofiles>=23.2.1
+pydantic>=2.4.2
