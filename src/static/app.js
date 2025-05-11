@@ -107,7 +107,7 @@ async function checkApiStatus(force = false) {
         
         // Opdater UI baseret på status - kun hvis status har ændret sig
         if (!apiCache.status.data || apiCache.status.data.status !== data.status) {
-            updateStatusUI(true, data.status === 'lytter' ? 'Lytter aktivt' : 'Forbundet');
+        updateStatusUI(true, data.status === 'lytter' ? 'Lytter aktivt' : 'Forbundet');
             if (listenToggle) listenToggle.checked = data.status === 'lytter';
         }
         
@@ -146,7 +146,7 @@ async function sendChatMessage(message) {
         
         // Nulstil input feltet
         if (userInput) {
-            userInput.value = '';
+        userInput.value = '';
             userInput.focus();
         }
         
@@ -188,7 +188,7 @@ async function sendChatMessage(message) {
         
         // Vis jarvis svar
         if (data && data.response) {
-            addMessageToChat('jarvis', data.response);
+        addMessageToChat('jarvis', data.response);
         } else {
             throw new Error('Modtog tomt svar fra serveren');
         }
@@ -238,31 +238,31 @@ function displayChatHistory(data) {
     if (chatContainer) {
         chatContainer.innerHTML = '';
     }
-    
-    // Tilføj velkomstbesked
-    addMessageToChat('jarvis', 'Hej, jeg er Jarvis! Jeg er din personlige stemmeassistent. Hvordan kan jeg hjælpe dig i dag?');
-    
-    // Tilføj historik
+        
+        // Tilføj velkomstbesked
+        addMessageToChat('jarvis', 'Hej, jeg er Jarvis! Jeg er din personlige stemmeassistent. Hvordan kan jeg hjælpe dig i dag?');
+        
+        // Tilføj historik
     if (data && data.history && data.history.length > 0) {
         // Brug fragment for batch DOM-opdatering
         const fragment = document.createDocumentFragment();
         
-        data.history.forEach(entry => {
-            if (entry.user && entry.user.trim()) {
+            data.history.forEach(entry => {
+                if (entry.user && entry.user.trim()) {
                 const userDiv = document.createElement('div');
                 userDiv.className = 'user-message p-3 max-w-3/4 self-end my-1';
                 userDiv.textContent = entry.user;
                 fragment.appendChild(userDiv);
-            }
+                }
             
-            if (entry.jarvis && entry.jarvis.trim()) {
+                if (entry.jarvis && entry.jarvis.trim()) {
                 const jarvisDiv = document.createElement('div');
                 jarvisDiv.className = 'bot-message p-3 max-w-3/4 my-1';
                 jarvisDiv.textContent = entry.jarvis;
                 fragment.appendChild(jarvisDiv);
-            }
-        });
-        
+                }
+            });
+            
         // Tilføj alle elementer på én gang
         if (chatContainer) {
             chatContainer.appendChild(fragment);
@@ -481,8 +481,8 @@ function setupEventListeners() {
                 if (!response.ok) throw new Error('Kunne ikke rydde chathistorik');
                 
                 // Ryd UI
-                chatContainer.innerHTML = '';
-                addMessageToChat('jarvis', 'Chathistorikken er ryddet. Hvordan kan jeg hjælpe dig?');
+            chatContainer.innerHTML = '';
+            addMessageToChat('jarvis', 'Chathistorikken er ryddet. Hvordan kan jeg hjælpe dig?');
             } catch (error) {
                 console.error('Fejl ved rydning af chathistorik:', error);
                 addMessageToChat('jarvis', 'Beklager, jeg kunne ikke rydde chathistorikken på grund af en fejl.');
