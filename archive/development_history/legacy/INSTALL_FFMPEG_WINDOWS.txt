@@ -1,0 +1,20 @@
+# Instructions for installing ffmpeg on Windows
+
+1. Download the latest Windows build from the official source:
+   https://www.gyan.dev/ffmpeg/builds/
+   - Recommended: Download the "Release full build" ZIP file.
+
+2. Extract the ZIP file to a folder, e.g., `C:\ffmpeg`.
+
+3. Add `C:\ffmpeg\bin` to your Windows PATH environment variable:
+   - Press Win+S, search for "Environment Variables", and open "Edit the system environment variables".
+   - Click "Environment Variables".
+   - Under "System variables", find and select "Path", then click "Edit".
+   - Click "New" and add the path: `C:\ffmpeg\bin`
+   - Click OK to close all dialogs.
+
+4. Open a new Command Prompt and run:
+   ffmpeg -version
+   - You should see version info if installation is successful.
+
+# ffmpeg is now ready for use by Python libraries like pydub!
