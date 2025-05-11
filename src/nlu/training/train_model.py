@@ -40,10 +40,12 @@ logger.info(f"Root directory: {root_dir}")
 sys.path.append(root_dir)
 
 # Stier
-TRAINING_DATA_PATH = os.path.join(script_dir, "training_data.json")
+TRAINING_DATA_PATH = os.path.join(root_dir, "data", "nlu_training_data.json")
 MODEL_OUTPUT_PATH = os.path.join(nlu_dir, "model.joblib")
+LABELS_OUTPUT_PATH = os.path.join(nlu_dir, "labels.joblib")
 logger.info(f"Training data path: {TRAINING_DATA_PATH}")
 logger.info(f"Model output path: {MODEL_OUTPUT_PATH}")
+logger.info(f"Labels output path: {LABELS_OUTPUT_PATH}")
 
 # Grundlæggende træningsdata
 BASIC_TRAINING_DATA = {
@@ -250,10 +252,31 @@ def train_model(X, y):
     # Evaluer modellen
     y_pred = pipeline.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
-    logger.info(f"Model nøjagtighed: {accuracy:.4f}")
-    logger.info("\nKlassifikationsrapport:")
-    logger.info(classification_report(y_test, y_pred))
+    report = classification_report(y_test, y_pred)
     
+    logger.info(f"Model træningsnøjagtighed: {accuracy:.4f}")
+    print("\nKlassifikationsrapport:\n", report)
+
+    # Gem unikke intent labels
+    # Det er vigtigt at bruge de labels, modellen er trænet på (y_train), eller endnu bedre, alle unikke labels fra det oprindelige y datasæt.
+    # For at være sikker på at alle mulige labels er med, selvom de ikke ender i y_train pga. split, er det bedst at tage unikke fra hele y.
+    unique_labels = sorted(list(set(y))) # Brug hele y for at få alle mulige labels
+    try:
+        os.makedirs(os.path.dirname(LABELS_OUTPUT_PATH), exist_ok=True)
+        joblib.dump(unique_labels, LABELS_OUTPUT_PATH)
+        logger.info(f"Unikke intent labels gemt til: {LABELS_OUTPUT_PATH}")
+        logger.info(f"Modellen er trænet med følgende {len(unique_labels)} labels: {unique_labels}")
+    except Exception as e:
+        logger.error(f"Fejl under gemning af labels.joblib: {e}")
+
+    # Gem modellen
+    try:
+        os.makedirs(os.path.dirname(MODEL_OUTPUT_PATH), exist_ok=True)
+        joblib.dump(pipeline, MODEL_OUTPUT_PATH)
+        logger.info(f"Model gemt til: {MODEL_OUTPUT_PATH}")
+    except Exception as e:
+        logger.error(f"Fejl under gemning af model.joblib: {e}")
+
     return pipeline
 
 def add_training_examples():
