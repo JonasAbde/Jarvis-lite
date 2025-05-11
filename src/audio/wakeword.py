@@ -8,7 +8,6 @@ import time
 import wave
 import logging
 import asyncio
-import pyaudio
 import tempfile
 import numpy as np
 from typing import Optional, Tuple, Callable, List
@@ -16,8 +15,21 @@ from typing import Optional, Tuple, Callable, List
 # Logger
 logger = logging.getLogger(__name__)
 
+# Prøv at importere pyaudio, fallback til sounddevice
+USE_PYAUDIO = True
+try:
+    import pyaudio
+    FORMAT = pyaudio.paInt16
+except ImportError:
+    USE_PYAUDIO = False
+    try:
+        import sounddevice as sd
+        FORMAT = 16  # 16-bit for sounddevice
+        logger.info("PyAudio ikke tilgængelig, bruger sounddevice til wakeword")
+    except ImportError:
+        logger.error("Hverken PyAudio eller sounddevice er tilgængelig. Wakeword vil ikke virke.")
+
 # Konfiguration
-FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 CHUNK = 1024
@@ -66,15 +78,24 @@ class WakewordDetector:
         self.audio_buffer = []
         
         try:
-            self.p = pyaudio.PyAudio()
-            self.stream = self.p.open(
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                frames_per_buffer=CHUNK,
-                stream_callback=self._audio_callback
-            )
+            if USE_PYAUDIO:
+                self.p = pyaudio.PyAudio()
+                self.stream = self.p.open(
+                    format=FORMAT,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    frames_per_buffer=CHUNK,
+                    stream_callback=self._audio_callback
+                )
+            else:
+                # Sounddevice implementering - mere begrænset funktionalitet
+                # Da sounddevice ikke understøtter callback på samme måde, kan vi bruge en simpel simulering
+                logger.info("Bruger sounddevice til wakeword (begrænset funktionalitet)")
+                self.sd_callback_active = True
+                # Start callback-simulering i baggrunden
+                asyncio.create_task(self._sounddevice_callback_loop())
+                
             logger.info("Wakeword detektion startet - lytter efter 'Jarvis'")
         except Exception as e:
             logger.error(f"Fejl ved start af wakeword detektion: {e}")
@@ -84,20 +105,25 @@ class WakewordDetector:
         """Stopper lytning efter wakeword"""
         self.listening = False
         
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-        
-        if self.p:
-            self.p.terminate()
+        if USE_PYAUDIO:
+            if self.stream:
+                self.stream.stop_stream()
+                self.stream.close()
             
-        self.stream = None
-        self.p = None
+            if self.p:
+                self.p.terminate()
+                
+            self.stream = None
+            self.p = None
+        else:
+            # For sounddevice, bare stop callback loopet
+            self.sd_callback_active = False
+            
         logger.info("Wakeword detektion stoppet")
     
     def _audio_callback(self, in_data, frame_count, time_info, status) -> Tuple[bytes, int]:
         """
-        Callback for lydstrøm
+        Callback for lydstrøm (kun for PyAudio)
         
         Args:
             in_data: Lyddata
@@ -109,7 +135,9 @@ class WakewordDetector:
             Tuple af (data, flag) for at fortsætte strømmen
         """
         if not self.listening:
-            return (in_data, pyaudio.paComplete)
+            if USE_PYAUDIO:
+                return (in_data, pyaudio.paComplete)
+            return (in_data, 1)  # 1 = Complete for ikke-PyAudio
         
         # Tilføj den nye lyd til bufferen
         self.audio_buffer.append(in_data)
@@ -124,7 +152,9 @@ class WakewordDetector:
             if not self.is_activated and np.random.random() < 0.2:  # 20% sandsynlighed
                 asyncio.create_task(self._process_buffer())
         
-        return (in_data, pyaudio.paContinue)
+        if USE_PYAUDIO:
+            return (in_data, pyaudio.paContinue)
+        return (in_data, 0)  # 0 = Continue for ikke-PyAudio
     
     async def _process_buffer(self) -> None:
         """
@@ -224,6 +254,59 @@ class WakewordDetector:
         except Exception as e:
             logger.error(f"Fejl ved indlæsning af lydfil: {e}")
             return None, None
+
+    async def _sounddevice_callback_loop(self) -> None:
+        """
+        Simulerer callback med sounddevice ved regelmæssig optagelse
+        """
+        if not hasattr(self, 'sd_callback_active'):
+            self.sd_callback_active = True
+            
+        try:
+            while self.listening and self.sd_callback_active:
+                # Optag et kort lydklip
+                audio_data = await self._record_sounddevice_chunk()
+                if audio_data is not None:
+                    # Tilføj den nye lyd til bufferen
+                    self.audio_buffer.append(audio_data)
+                    
+                    # Begræns buffer-størrelsen
+                    if len(self.audio_buffer) > self.buffer_frames:
+                        self.audio_buffer.pop(0)
+                    
+                    # Tjek regelmæssigt for wakeword
+                    if len(self.audio_buffer) >= self.buffer_frames / 2:
+                        if not self.is_activated and np.random.random() < 0.2:  # 20% sandsynlighed
+                            await self._process_buffer()
+                
+                # Kort pause for at undgå CPU overbelastning
+                await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Fejl i sounddevice callback loop: {e}")
+            self.sd_callback_active = False
+
+    async def _record_sounddevice_chunk(self) -> Optional[bytes]:
+        """
+        Optager et lydklip med sounddevice
+        
+        Returns:
+            Bytes med lyddata eller None ved fejl
+        """
+        try:
+            # Brug sounddevice til at optage et kort klip
+            audio_data = sd.rec(
+                int(CHUNK),
+                samplerate=RATE,
+                channels=CHANNELS,
+                dtype='int16'
+            )
+            sd.wait()  # Vent på optagelse er færdig
+            
+            # Konverter numpy array til bytes
+            return audio_data.tobytes()
+        except Exception as e:
+            logger.error(f"Fejl ved optagelse med sounddevice: {e}")
+            return None
 
 # Globalt objekt for nem import
 detector = None
