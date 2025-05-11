@@ -15,6 +15,8 @@ import importlib # Tilføjet for dynamisk funktionskald
 import random
 from typing import List, Dict, Any, Optional
 import uuid
+from src.nlu.utils import _append_training_example # Importerer hjælpefunktion
+from src.nlu.classifier import NLUClassifier, load_training_data as load_nlu_training_data # Importerer NLUClassifier og load_training_data (med nyt navn)
 
 # --- Globale variabler ---
 CORE_COMPONENTS_MISSING = True
@@ -118,12 +120,22 @@ def initialize_jarvis():
     if not COMMANDS_CONFIG:
         logger.warning("Kunne ikke indlæse dynamisk kommando-konfiguration. Kun NLU-baserede intents vil virke.")
     
-    # NLU-modellen indlæses automatisk når NLUClassifier initialiseres (eller første gang analyze kaldes)
-    # Man kan evt. kalde get_nlu_intents() her for at tvinge en tidlig load/fejl.
+    # Test NLU-modulet ved at hente intents
+    nlu_operational = False
     try:
-        logger.info(f"Tilgængelige NLU intents: {get_nlu_intents()}")
+        available_intents = get_nlu_intents()
+        if available_intents:
+            logger.info(f"NLU-modul operationelt. Tilgængelige intents: {available_intents}")
+            nlu_operational = True
+        else:
+            logger.error("NLU-modul initialiseret, men ingen intents fundet. Tjek model og træningsdata.")
     except Exception as e:
-        logger.error(f"Fejl ved initialisering/test af NLU-modul: {e}")
+        logger.error(f"Kritisk fejl under initialisering/test af NLU-modul: {e}", exc_info=True)
+        # nlu_operational forbliver False
+
+    if not nlu_operational:
+        logger.error("Jarvis-lite initialisering fejlede: NLU-modulet er ikke operationelt.")
+        return False # Vigtigt: Returner False hvis NLU ikke er klar
 
     # Opret nødvendige data/cache mapper (hvis ikke allerede gjort af modulerne selv)
     os.makedirs(os.path.join("data", "notes"), exist_ok=True)
@@ -131,7 +143,61 @@ def initialize_jarvis():
     # models/nlu oprettes af NLUClassifier hvis den træner
 
     logger.info("Jarvis-lite initialiseret.")
+    
+    # --- Start daglig NLU retræning baggrunds-task (Tilføjet) ---
+    asyncio.create_task(_daily_retrain())
+    logger.info("Daglig NLU retræning baggrunds-task startet.")
+
     return True
+
+# --- Singleton instans af NLUClassifier og genindlæsningsfunktion (Tilføjet) ---
+_classifier_instance: Optional[NLUClassifier] = None
+
+def _get_classifier_instance() -> NLUClassifier:
+    """ Returnerer singleton instansen af NLUClassifier, opretter den hvis den ikke findes. """
+    global _classifier_instance
+    if _classifier_instance is None:
+        # Initialiser NLUClassifier. Den vil forsøge at indlæse model ved oprettelse.
+        _classifier_instance = NLUClassifier()
+    return _classifier_instance
+
+def _reload_classifier() -> None:
+    """ Genindlæser NLUClassifier instansen for at loade den seneste model. """
+    global _classifier_instance
+    logger.info("Genindlæser NLUClassifier for at loade ny model...")
+    _classifier_instance = NLUClassifier() # Opretter en ny instans, som indlæser den gemte model
+    if _classifier_instance.pipeline and _classifier_instance.intent_labels:
+        logger.info("NLUClassifier genindlæst succesfuldt.")
+    else:
+         logger.warning("NLUClassifier genindlæsning fejlede. Modellen blev ikke indlæst.")
+
+# --- Baggrunds-task for daglig retræning (Tilføjet) ---
+async def _daily_retrain():
+    logger.info("Starter daglig NLU retræning task.")
+    while True:
+        # Vent 24 timer
+        await asyncio.sleep(24 * 3600) # 24 timer i sekunder
+        # await asyncio.sleep(60) # TEST: Retræn hvert minut til test
+
+        logger.info("Udfører daglig NLU retræning.")
+        try:
+            # Indlæs de seneste træningsdata (nu fra data/nlu_training_data.json)
+            # Brug load_training_data fra classifier.py
+            patterns, intents = load_nlu_training_data(file_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "nlu_training_data.json"))
+            
+            if patterns and intents:
+                # Opret en ny classifier instans til træning (behøver ikke være singleton)
+                trainer_classifier = NLUClassifier() 
+                trainer_classifier.train(patterns, intents) # Træner og gemmer modellen
+                logger.info("Daglig NLU-model træning fuldført.")
+                
+                # Genindlæs den nyligt trænede model i singleton-instansen
+                _reload_classifier()
+            else:
+                logger.warning("Ingen træningsdata fundet til daglig retræning. Springer træning over.")
+
+        except Exception as e:
+            logger.error(f"Fejl under daglig NLU retræning: {e}", exc_info=True)
 
 # --- Kommando Udførelses Logik ---
 async def execute_action(action: Dict[str, Any]):
@@ -270,21 +336,43 @@ async def process_input_text(user_input: str) -> str:
             is_negative = any(word in normalized_input for word in negative_responses)
 
             original_intent = metadata.get("original_intent", "ukendt_kontekst") if metadata else "ukendt_kontekst"
+            original_text = metadata.get("original_text", "") # Hent den oprindelige tekst
+            
             context_manager.clear_expected_response() # Ryd altid forventningen
 
-            if is_affirmative:
-                response = f"Okay, jeg bekræfter handlingen for {original_intent}."
-                # Her kan du tilføje logik baseret på `metadata` til at fuldføre handlingen
-                # F.eks. hvis original_intent var "save_note" og metadata indeholder note_text
-                if original_intent == "save_note_confirmation":
-                    # Her ville du faktisk gemme noten gemt i metadata
-                    pass 
+            response = "" # Initialiser svar
+            intent_for_log = f"clarification_response_{original_intent}" # Log intent for bekræftelse/afvisning
+
+            if is_affirmative and original_intent and original_text:
+                # Brugeren bekræftede intentet - gem eksemplet!
+                try:
+                    # Filstien skal være relativ til projektets rod for utils.py
+                    _append_training_example(original_intent, original_text, file_path="data/nlu_training_data.json")
+                    response = "Tak! Jeg har gemt det og vil lære af det."
+                    logger.info(f"Bruger bekræftede intent '{original_intent}' for tekst '{original_text}'. Eksempel gemt i data/nlu_training_data.json.")
+                    
+                    # VIGTIGT: Kald _reload_classifier() efter at have gemt nye eksempler,
+                    # så den genindlæser den seneste træningsdata. En fuld retræning sker kun dagligt.
+                    # Overvej om en umiddelbar mini-retræning er bedre her.
+                    # For nu, genindlæs kun data, full train sker dagligt.
+                    _reload_classifier() 
+
+                except Exception as e:
+                    logger.error(f"Fejl under gemning af træningseksempel med _append_training_example: {e}")
+                    response = "Tak for svaret, men der opstod en fejl under forsøget på at gemme eksemplet."
+                intent_for_log = f"confirmed_{original_intent}"
+
             elif is_negative:
-                response = f"Okay, jeg annullerer handlingen for {original_intent}."
+                response = f"Okay, jeg annullerer handlingen eller ignorering af '{original_intent}' for nu."
+                logger.info(f"Bruger afviste intent '{original_intent}' for tekst '{original_text}'.")
+                intent_for_log = f"cancelled_{original_intent}"
             else:
-                response = "Jeg forstod ikke dit svar på mit tidligere spørgsmål. Prøv igen."
+                response = "Jeg forstod ikke dit svar. Prøv igen."
+                logger.warning(f"Ugyldigt svar ({user_input}) på forventet ja/nej respons for intent '{original_intent}'.")
                 # Overvej at gen-sætte expected_response eller håndtere anderledes
-            intent_for_log = f"confirmed_{original_intent}" if is_affirmative else f"cancelled_{original_intent}"
+                intent_for_log = "clarification_response_unclear"
+
+            # Gem interaktionen (brugerens svar og Jarvis' respons)
             context_manager.add_interaction(user_input, response, intent_for_log)
             return response
         # Andre expected_types kan tilføjes her
@@ -306,8 +394,48 @@ async def process_input_text(user_input: str) -> str:
     # 3. Hvis ingen dynamisk kommando, brug NLU-intent klassifikation
     if not action_taken:
         logger.info("Ingen dynamisk kommando matchede. Forsøger NLU-intent klassifikation...")
-        nlu_result = analyze_nlu_intent(user_input)
         
+        # Brug singleton instansen af classifier til analyse
+        classifier = _get_classifier_instance()
+        nlu_result = classifier.analyze(user_input)
+        
+        # --- Spørg brugeren ved lav konfidens (Tilføjet) ---
+        # Tjek om NLU gav et resultat, intentet ikke er "unknown", og konfidensen er lav
+        # Tærskel 0.55 er defineret i NLU classifier, men kan også defineres/bruges her for klarhed
+        NLU_CONFIDENCE_THRESHOLD = 0.55 # Matcher tærsklen i classifier.py for nu
+        if nlu_result and nlu_result.get("intent") and nlu_result.get("intent") != "unknown" and nlu_result["confidence"] < NLU_CONFIDENCE_THRESHOLD:
+            predicted_intent = nlu_result["intent"]
+            logger.info(f"Lav NLU konfidens ({nlu_result['confidence']:.2f}) for input '{user_input}'. Foreslår intent '{predicted_intent}'. Spørger brugeren.")
+            
+            # Stil spørgsmålet til brugeren
+            response_to_user = f"Jeg er ikke helt sikker på, hvad du mener. Betød det her '{predicted_intent}'? Svar ja eller nej."
+            # Brug stream_speak for at brugeren hører spørgsmålet (hvis muligt i konteksten)
+            # Hvis ikke stream_speak er passende (f.eks. i chat interface), send svaret via API/WebSocket
+            # I API_server.py håndteres speak_async kaldet efter process_input_text, så vi returnerer bare strengen
+            
+            # Sæt context_manager til at afvente et ja/nej svar
+            context_manager.set_expected_response(
+                "yes_no",
+                metadata={
+                    "original_intent": predicted_intent,
+                    "original_text": user_input
+                    }
+            )
+            
+            # Gem interaktionen (spørgsmålet til brugeren)
+            # Vi gemmer brugerens input og Jarvis' spørgsmål som en del af historikken
+            # Dette sker automatisk i API_server efter returnering, men vi logger intent her
+            intent_for_log = "clarification_request"
+            # context_manager.add_interaction(user_input, response_to_user, intent_for_log) # Undgå dobbelt-logning hvis API_server logger retur-værdi
+            
+            # Returner spørgsmålet som Jarvis' svar, og vent på næste input
+            # API_serveren vil så sende dette tilbage til klienten.
+            return response_to_user 
+
+        # --- Fortsæt med normal håndtering hvis konfidens er høj nok eller intent er 'unknown' ---
+        # Hvis vi er her, er konfidensen enten høj nok (og != unknown), eller intentet er 'unknown'
+        # Den oprindelige logik fortsætter her...
+
         if nlu_result and nlu_result.get("intent") != "unknown":
             intent = nlu_result["intent"]
             confidence = nlu_result["confidence"]
