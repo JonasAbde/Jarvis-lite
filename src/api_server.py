@@ -19,48 +19,79 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Tilføjet import af process_input_text fra jarvis-modulet ---
+# --- Import Jarvis Kernekomponenter (revideret og simplificeret) ---
+JARVIS_CORE_AVAILABLE = False
+JARVIS_INITIALIZED = False # Initial state
+
+process_input_text = None # Definér som None før import/simulering
+speak_async = None
+initialize_jarvis = None
+
 try:
-    # Forsøg forskellige import-stier afhængigt af, hvordan scriptet er kørt
-    try:
-        # Hvis kørt direkte fra src-mappen
-        from jarvis import process_input_text, speak_async, initialize_jarvis
-    except ImportError:
-        # Hvis kørt fra rod-mappen
-        from src.jarvis import process_input_text, speak_async, initialize_jarvis
-    
-    # Initialiser Jarvis for at indlæse modellen
-    JARVIS_INITIALIZED = initialize_jarvis()
-    JARVIS_CORE_AVAILABLE = JARVIS_INITIALIZED
-    
+    # Forsøg at importere kernemoduler fra src.jarvis (standard når kørt fra rod)
+    from src.jarvis import process_input_text as real_process_input_text, \
+                           speak_async as real_speak_async, \
+                           initialize_jarvis as real_initialize_jarvis
+    logger.info("Imported Jarvis core from src.jarvis.")
+
+    # Hvis importen lykkedes, forsøg initialisering
+    logger.info("Attempting Jarvis core initialization...")
+    JARVIS_INITIALIZED = real_initialize_jarvis()
     if JARVIS_INITIALIZED:
+        JARVIS_CORE_AVAILABLE = True
         logger.info("Jarvis kernemodul initialiseret succesfuldt.")
     else:
-        logger.warning("Jarvis kernemodul blev importeret, men initialisering fejlede.")
+        # initialize_jarvis returnerede False
+        logger.warning("Jarvis kernemodul blev importeret, men initialize_jarvis returnerede False.")
+        # Kernen kunne ikke initialiseres - kør simuleret
+        JARVIS_CORE_AVAILABLE = False
+
 except ImportError as e:
-    logger.warning(f"Kunne ikke importere Jarvis kernemoduler: {e}. Kører i simuleret tilstand.")
+    # Importen fejlede - sæt til simuleret tilstand
+    logger.warning(f"Kunne ikke importere Jarvis kernemoduler fra 'src.jarvis': {e}. Kører i simuleret tilstand.")
     JARVIS_CORE_AVAILABLE = False
-    
-    # Simuleret process_input_text funktion til test
+except Exception as e: # Fanger andre fejl under initialize_jarvis kaldet efter import
+    logger.warning(f"Jarvis kernemodul blev importeret, men initialize_jarvis kastede fejl: {e}", exc_info=True)
+    # Kernen fejlede under initialisering - kør simuleret
+    JARVIS_CORE_AVAILABLE = False
+
+# Hvis JARVIS_CORE_AVAILABLE stadig er False, brug simulerede funktioner
+if not JARVIS_CORE_AVAILABLE:
+    logger.warning("Jarvis kernemodul ikke tilgængelig. Sikrer brug af simulerede funktioner.")
+    # Redefiner simulerede funktioner for at være sikre
     async def process_input_text(user_input: str) -> str:
-        logger.info(f"Simulerer svar på: {user_input}")
-        await asyncio.sleep(1)  # Simuler tænketid
+        logger.info(f"[Simuleret] Behandler: {user_input}")
+        await asyncio.sleep(0.1) # Simuler kort tænketid
         responses = {
             "hej": "Hej med dig! Hvordan kan jeg hjælpe?",
             "hvad kan du": "Jeg er Jarvis, din danske stemmeassistent. Jeg kan svare på spørgsmål, fortælle tiden, og meget mere.",
-            "tid": "Klokken er " + time.strftime("%H:%M"),
             "dato": "I dag er det " + time.strftime("%d/%m/%Y"),
-            "vejr": "Jeg kan desværre ikke tjekke vejret lige nu."
+            "vejr": "Jeg kan desværre ikke tjekke vejret lige nu.",
+            "hvem er du": "Jeg er Jarvis, din danske stemmeassistent. Jeg er her for at hjælpe dig.",
+            "tid": "Klokken er " + time.strftime("%H:%M")
         }
-        
+
         for keyword, response in responses.items():
             if keyword in user_input.lower():
                 return response
-                
+
         return f"Jeg forstod din besked: '{user_input}', men jeg ved ikke helt hvordan jeg skal hjælpe med det."
-    
+
     async def speak_async(text: str, lang: str = 'da') -> None:
-        logger.info(f"Simuleret tale: {text}")
+        logger.info(f"[Simuleret] Tale: {text}")
+        # Gør intet i simuleret tilstand
+        pass
+
+    def initialize_jarvis():
+         logger.info("[Simuleret] initialize_jarvis kaldt.")
+         return False # Simuleret init fejler altid
+
+else:
+    # Hvis JARVIS_CORE_AVAILABLE er True, brug de rigtige importerede funktioner
+    process_input_text = real_process_input_text
+    speak_async = real_speak_async
+    initialize_jarvis = real_initialize_jarvis # Selvom denne ikke bruges direkte her efter initialisering, beholdes den for fuldstændighed.
+
 
 # Dummy Jarvis Controller - erstat med din faktiske integration
 class JarvisControllerPlaceholder:
