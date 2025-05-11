@@ -5,18 +5,37 @@ Tale-til-tekst og tekst-til-tale funktioner for Jarvis Lite.
 import os
 import wave
 import hashlib
-import pyaudio
 import logging
-import numpy as np
-from gtts import gTTS
-import playsound
-import soundfile as sf
+import numpy as np  # type: ignore
+from gtts import gTTS  # type: ignore
+import playsound # type: ignore
+import soundfile as sf  # type: ignore
 import asyncio
 import tempfile
+import re
 from typing import Optional, Tuple
 
+# Forsøg at importere pyaudio, med sounddevice som backup
+USE_PYAUDIO = True
+USE_SOUNDDEVICE = False
+
+try:
+    import pyaudio # type: ignore
+except ImportError:
+    USE_PYAUDIO = False
+    try:
+        import sounddevice as sd  # type: ignore
+        USE_SOUNDDEVICE = True
+        print("PyAudio ikke tilgængelig. Bruger sounddevice i stedet.")
+    except ImportError:
+        print("ADVARSEL: Hverken PyAudio eller sounddevice er tilgængelig. Lydoptagelse vil ikke virke.")
+
 # Konfiguration
-FORMAT = pyaudio.paInt16
+if USE_PYAUDIO:
+    FORMAT = pyaudio.paInt16
+else:
+    FORMAT = 16  # For sounddevice
+
 CHANNELS = 1
 RATE = 16000
 CHUNK = 1024
@@ -25,6 +44,11 @@ TTS_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 
 # Logger
 logger = logging.getLogger(__name__)
+
+# Tilføj en global lydafspilningskø og et flag for at spore igangværende afspilning
+SPEECH_QUEUE = []  # Kø til ventende taleafspilninger
+CURRENTLY_SPEAKING = False  # Flag der indikerer om der er en igangværende taleafspilning
+SPEECH_LOCK = None  # Asyncio lock til at synkronisere taleafspilning
 
 def load_whisper_model():
     """Indlæser Whisper-modellen til STT"""
@@ -211,79 +235,43 @@ class DemoWhisperModel:
         avg_amplitude = np.mean(np.abs(audio)) if isinstance(audio, np.ndarray) else 0.05
         audio_duration = len(audio) / 16000 if isinstance(audio, np.ndarray) else 2.0  # Antager 16kHz
         
-        # Hvis der er for lidt lyd, returner ingen tekst
-        if avg_amplitude < 0.007:  # Lavere tærskel for at detektere mere
+        # Meget strengere kontrol for reel lyd - kun returnér tekst hvis der faktisk er tale
+        if avg_amplitude < 0.02:  # Øget væsentligt fra 0.007
+            logger.info(f"Ingen tilstrækkelig lyd detekteret i audio (amplitude: {avg_amplitude})")
             return [], None
             
-        # Sikrer vi aldrig returnerer tom tekst for brugbar lyd
-        try:
-            import random
-            import time
-            
-            # Brug tid som en del af seed for at sikre forskellige outputs
-            current_time = int(time.time())
-            
-            # Brug tiden og lyden til at generere et konsistent men varierbart seed
-            seed_value = (current_time % 1000) + int(avg_amplitude * 100) + int(audio_duration * 10)
-            random.seed(seed_value)
-            
-            # Vælg en kommando baseret på forskellige faktorer
-            phrase_selection_method = seed_value % 4  # Forskellige måder at vælge på
-            
-            if phrase_selection_method == 0:
-                # Vælg en af de definerede kommandoer (40% chance)
-                phrase = random.choice(list(self.commands.keys()))
-            elif phrase_selection_method == 1:
-                # Vælg en af de udvidede, mere naturlige kommandoer (30% chance)
-                phrase = random.choice(self.extended_commands)
-            else:
-                # Vælg fra alle potentielle kommandoer (30% chance)
-                phrase = random.choice(self.all_commands)
+        # For korte lyde er sandsynligvis ikke intentionel tale
+        if audio_duration < 0.5:
+            logger.info(f"Lyd for kort til at være tale ({audio_duration:.2f}s)")
+            return [], None
+        
+        # I demo-tilstand returnerer vi svar baseret på lydlængden, 
+        # men med meget højere krav til amplitude og varighed
+        phrase = "hej jarvis"
+        
+        # Kun for gode lydprøver med tilstrækkelig amplitude
+        if audio_duration < 1.0:
+            phrase = "ja"  # Kort lyd
+        elif audio_duration < 1.5:
+            phrase = "nej"  # Lidt længere
+        elif audio_duration < 2.5:
+            phrase = "hvad kan du"  # Mellem
+        elif audio_duration < 3.5:
+            phrase = "fortæl en joke"  # Længere
+        elif audio_duration < 5.0:  # Standard
+            phrase = "hvad er klokken"
+        else:
+            phrase = "fortæl mig om dig selv"  # Lang
+
+        logger.info(f"Demo-NLU detekterede: '{phrase}' (amplitude: {avg_amplitude:.4f}, varighed: {audio_duration:.2f}s)")
                 
-            # Simulér variationer i genkendt tekst
-            variation_chance = seed_value % 10
-            if variation_chance < 3:  # 30% chance for variation
-                # Tilføj småfejl eller variationer for at simulere naturlig STT
-                words = phrase.split()
-                
-                # Tilfældige variationer
-                if len(words) > 3 and variation_chance == 0:
-                    # Fjern et tilfældigt ord (10% chance)
-                    remove_idx = random.randint(0, len(words)-1)
-                    words.pop(remove_idx)
-                elif len(words) > 2 and variation_chance == 1:
-                    # Tilføj et fyldord (10% chance)
-                    insert_idx = random.randint(0, len(words))
-                    filler_words = ["øh", "hmm", "altså", "jo", "måske", "lige", "bare", "sådan"]
-                    words.insert(insert_idx, random.choice(filler_words))
-                elif variation_chance == 2:
-                    # Ændr ordstilling let (10% chance)
-                    if len(words) > 3:
-                        idx1, idx2 = random.sample(range(len(words)), 2)
-                        words[idx1], words[idx2] = words[idx2], words[idx1]
-                
-                # Genopbyg frasen med variationer
-                phrase = " ".join(words)
+        # Segment klasse med nødvendige felter
+        class Segment:
+            def __init__(self):
+                self.text = phrase
+                self.avg_logprob = -0.5
             
-            logger.info(f"Demo-NLU detekterede: '{phrase}'")
-                
-            # Segment klasse med nødvendige felter
-            class Segment:
-                def __init__(self):
-                    self.text = phrase
-                    # Simuler forskellige konfidensniveauer
-                    self.avg_logprob = -random.uniform(0.2, 0.8)
-            
-            return [Segment()], None
-            
-        except Exception as e:
-            logger.error(f"Fejl i demo-transcription: {e}")
-            # Fallback til en sikker kommando
-            class SafeSegment:
-                def __init__(self):
-                    self.text = "hvad kan du"
-                    self.avg_logprob = -1.0
-            return [SafeSegment()], None
+        return [Segment()], None
 
 def transcribe_audio(file_path: str) -> Optional[str]:
     """
@@ -349,112 +337,135 @@ def record_audio() -> Optional[str]:
     Returns:
         Sti til den gemte lydfil eller None ved fejl
     """
+    if not USE_PYAUDIO and not USE_SOUNDDEVICE:
+        logger.error("Lydoptagelse er ikke tilgængelig: Både PyAudio og sounddevice mangler")
+        return None
+        
     try:
-        p = pyaudio.PyAudio()
-        stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-        logger.info("Optager lyd...")
-        print("\n🎤 Lytter... (Tal nu!)")  # Tydelig indikation for brugeren
+        if USE_PYAUDIO:
+            # PyAudio implementering
+            p = pyaudio.PyAudio()
+            stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+            logger.info("Optager lyd med PyAudio...")
         
-        frames = []
+            frames = []
         
-        # Forbedret støjdetektering
-        noise_samples = []
-        for _ in range(5):
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            noise_samples.append(np.abs(audio_data).mean())
-        noise_baseline = np.mean(noise_samples)
-        silence_threshold = max(int(100), int(noise_baseline * 1.2))  # Type cast for at løse linter-fejl
-        
-        logger.info(f"Støj baseline: {noise_baseline}, tærskel: {silence_threshold}")
-        
-        silence_chunks = 0
-        max_silence_chunks = int(1.5 * RATE / CHUNK)  # 1.5 sekunder
-        max_recording_chunks = int(10 * RATE / CHUNK)  # 10 sekunder (længere optagelse)
-        chunk_count = 0
-        listening = True
-        has_sound = False
-        sound_chunks = 0
-        
-        # Vent på lyd frem for at starte med det samme
-        print("Venter på tale...")
-        waiting_for_speech = True
-        waiting_timeout = int(3 * RATE / CHUNK)  # 3 sekunder ventetid
-        waiting_count = 0
-        
-        while waiting_for_speech and waiting_count < waiting_timeout:
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            amplitude = np.abs(audio_data).mean()
+            # Forbedret støjdetektering
+            noise_samples = []
+            for _ in range(10):  # Øget fra 5 til 10 samples for bedre baseline
+                data = stream.read(CHUNK, exception_on_overflow=False)
+                audio_data = np.frombuffer(data, dtype=np.int16)
+                noise_samples.append(np.abs(audio_data).mean())
+            noise_baseline = np.mean(noise_samples)
+            silence_threshold = max(int(150), int(noise_baseline * 1.5))  # Forhøjet til 150 og 1.5x baseline
             
-            if amplitude > silence_threshold * 2:  # Kræv tydeligt tale
-                waiting_for_speech = False
-                print("Tale detekteret! Optager...")
-                frames.append(data)  # Inkluder denne lydbit
-                has_sound = True
-                sound_chunks = 1
-            else:
-                waiting_count += 1
-        
-        if waiting_count >= waiting_timeout:
-            print("Ingen tale detekteret inden for tidsgrænsen")
-            return None
-        
-        # Hovedoptagelsesloop
-        while listening:
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            frames.append(data)
-            chunk_count += 1
+            # Resten af PyAudio implementeringen
+            # ...
+        elif USE_SOUNDDEVICE:
+            # sounddevice implementering
+            logger.info("Optager lyd med sounddevice...")
+            print("\n🎤 Lytter... (Tal nu!)")  # Tydelig indikation for brugeren
             
-            # Tjek lydstyrke
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            amplitude = np.abs(audio_data).mean()
+            # Optag lyd i 5 sekunder
+            duration = 5  # sekunder
+            recording = sd.rec(int(duration * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
+            print("Optager...")
+            sd.wait()  # Vent til optagelsen er færdig
+            print("✅ Optagelse afsluttet! Bearbejder...")
             
-            if amplitude > silence_threshold:
-                has_sound = True
-                sound_chunks += 1
-                silence_chunks = 0
-            else:
-                silence_chunks += 1
-                if silence_chunks > max_silence_chunks and has_sound and sound_chunks > 2:
+            # Gem lydfilen
+            sf.write(TEMP_WAV, recording, RATE)
+            logger.info(f"Lyd gemt til {TEMP_WAV}")
+            return TEMP_WAV
+        
+        # Hvis vi bruger PyAudio, fortsæt med den oprindelige implementering
+        if USE_PYAUDIO:
+            print("\n🎤 Lytter... (Tal nu!)")  # Tydelig indikation for brugeren
+        
+            silence_chunks = 0
+            max_silence_chunks = int(2.5 * RATE / CHUNK)  # Øget til 2.5 sekunder (mere tålmodig)
+            max_recording_chunks = int(15 * RATE / CHUNK)  # Øget til 15 sekunder (længere optagelse)
+            chunk_count = 0
+            listening = True
+            has_sound = False
+            sound_chunks = 0
+        
+            # Vent på lyd frem for at starte med det samme
+            print("Venter på tale...")
+            waiting_for_speech = True
+            waiting_timeout = int(5 * RATE / CHUNK)  # Øget til 5 sekunder ventetid
+            waiting_count = 0
+        
+            while waiting_for_speech and waiting_count < waiting_timeout:
+                data = stream.read(CHUNK, exception_on_overflow=False)
+                audio_data = np.frombuffer(data, dtype=np.int16)
+                amplitude = np.abs(audio_data).mean()
+            
+                if amplitude > silence_threshold * 1.8:  # Sænket fra 2 til 1.8 for lettere aktivering
+                    waiting_for_speech = False
+                    print("Tale detekteret! Optager...")
+                    frames.append(data)  # Inkluder denne lydbit
+                    has_sound = True
+                    sound_chunks = 1
+                else:
+                    waiting_count += 1
+        
+            if waiting_count >= waiting_timeout:
+                print("Ingen tale detekteret inden for tidsgrænsen")
+                return None
+        
+            # Hovedoptagelsesloop
+            while listening:
+                data = stream.read(CHUNK, exception_on_overflow=False)
+                frames.append(data)
+                chunk_count += 1
+            
+                # Tjek lydstyrke
+                audio_data = np.frombuffer(data, dtype=np.int16)
+                amplitude = np.abs(audio_data).mean()
+            
+                if amplitude > silence_threshold:
+                    has_sound = True
+                    sound_chunks += 1
+                    silence_chunks = 0
+                else:
+                    silence_chunks += 1
+                    if silence_chunks > max_silence_chunks and has_sound and sound_chunks > 2:
+                        listening = False
+                        logger.info("Stilhed detekteret, stopper optagelse")
+            
+                if chunk_count > max_recording_chunks:
                     listening = False
-                    logger.info("Stilhed detekteret, stopper optagelse")
-            
-            if chunk_count > max_recording_chunks:
-                listening = False
-                logger.info("Maksimal optagelsestid nået")
+                    logger.info("Maksimal optagelsestid nået")
+                
+            # Luk PyAudio stream 
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+        
+            if frames and has_sound and sound_chunks > 2:
+                try:
+                    # Gem lydfilen
+                    wf = wave.open(TEMP_WAV, 'wb')
+                    wf.setnchannels(CHANNELS)
+                    wf.setsampwidth(p.get_sample_size(FORMAT))
+                    wf.setframerate(RATE)
+                    wf.writeframes(b''.join(frames))
+                    wf.close()
+                    logger.info(f"Lyd gemt til {TEMP_WAV}")
+                    print("✅ Optagelse afsluttet! Bearbejder...")
+                    return TEMP_WAV
+                except Exception as e:
+                    logger.error(f"Fejl ved gem af lydfil: {e}")
+                    return None
+            else:
+                logger.info("Ingen lyd detekteret eller for kort lyd")
+                print("❌ Ingen brugbar lyd optaget")
+                return None
                 
     except Exception as e:
         logger.error(f"Fejl under optagelse: {e}")
         return None
-        
-    finally:
-        try:
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
-        except:
-            pass
-        
-        if frames and has_sound and sound_chunks > 2:
-            try:
-                # Gem lydfilen
-                wf = wave.open(TEMP_WAV, 'wb')
-                wf.setnchannels(CHANNELS)
-                wf.setsampwidth(p.get_sample_size(FORMAT))
-                wf.setframerate(RATE)
-                wf.writeframes(b''.join(frames))
-                wf.close()
-                logger.info(f"Lyd gemt til {TEMP_WAV}")
-                print("✅ Optagelse afsluttet! Bearbejder...")
-                return TEMP_WAV
-            except Exception as e:
-                logger.error(f"Fejl ved gem af lydfil: {e}")
-                return None
-        else:
-            logger.info("Ingen lyd detekteret eller for kort lyd")
-            print("❌ Ingen brugbar lyd optaget")
-            return None
 
 def danish_text_cleanup(text: str) -> str:
     """
@@ -492,32 +503,40 @@ def danish_text_cleanup(text: str) -> str:
     
     return text
 
-def speak(text: str, lang: str = 'da') -> None:
+# Simpel funktion til at afspille lydfil synkront (blokerende)
+def play_sound_blocking(mp3_path):
     """
-    Konverterer tekst til tale og afspiller det med tydelig dansk udtale
+    Afspiller en lydfil blokerende (venter til den er færdig)
     
     Args:
-        text: Teksten der skal omdannes til tale
-        lang: Sproget (default: 'da' for dansk)
+        mp3_path: Sti til lydfilen
     """
     try:
-        # Forbered teksten til bedre TTS
-        text = danish_text_cleanup(text)
-        
-        # Print output til konsollen (synlig feedback)
-        print(f"🔊 Jarvis: {text}")
-        
-        # Tjek cache først
-        text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
-        os.makedirs(TTS_CACHE_DIR, exist_ok=True)
-        cache_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
-        
-        # Hvis allerede i cache, brug den
-        if os.path.exists(cache_path):
-            logger.info(f"Bruger cached TTS for: {text[:50]}...")
-            playsound.playsound(cache_path, block=False)
-            return
-        
+        playsound.playsound(mp3_path, block=True)
+    except Exception as e:
+        logger.error(f"Fejl ved afspilning af lyd: {e}")
+
+# Opdater den asynkrone wrapper til at vente på at lyden afspilles færdig
+async def speak_async(text: str, lang: str = 'da') -> None:
+    """
+    Asynkron wrapper for speak der venter på at lyden afspilles færdig
+    
+    Args:
+        text: Teksten der skal udtales
+        lang: Sproget (default: 'da' for dansk)
+    """
+    # Forbered teksten til bedre TTS
+    text = danish_text_cleanup(text)
+    
+    # Print output til konsollen (synlig feedback)
+    print(f"🔊 Jarvis: {text}")
+    # Tjek cache først
+    text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
+    os.makedirs(TTS_CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
+    
+    # Generer eller brug cache
+    if not os.path.exists(cache_path):
         # Generer ny TTS
         logger.info(f"Genererer ny TTS for: {text[:50]}...")
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -526,16 +545,73 @@ def speak(text: str, lang: str = 'da') -> None:
         with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_file:
             temp_filename = temp_file.name
         
-        # Gem til temp fil og flyt for at undgå race-conditions
+        # Gem til temp fil og flyt
         tts.save(temp_filename)
         os.replace(temp_filename, cache_path)
+    else:
+        logger.info(f"Bruger cached TTS for: {text[:50]}...")
+    
+    # Afspil lyden blokerende, men i en executor for at undgå at blokere event loopet
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: play_sound_blocking(cache_path))
+
+# Genimplementer stream_speak
+async def stream_speak(text: str, lang: str = 'da', wait_after: bool = True) -> None:
+    """
+    Streamer tale med mere naturlig rytme og feedback
+    
+    Args:
+        text: Teksten der skal udtales
+        lang: Sproget (default: 'da' for dansk)
+        wait_after: Om der skal ventes efter tale
+    """
+    # Del teksten op i sætninger
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    
+    # Fjern tomme sætninger
+    sentences = [s for s in sentences if s.strip()]
+    
+    # Hvis der er et spørgsmål eller en forventning om respons, tag højde for det
+    expects_response = any(marker in text for marker in ["?", "Vil du", "Skal jeg", "Kan du"])
+    
+    # For meget korte tekster (fx "Ja", "Nej", "Okay"), brug normal speak
+    if len(text) < 10 or len(sentences) <= 1:
+        await speak_async(text, lang)
+        # Vent efter kort svar hvis det ikke er et spørgsmål
+        if wait_after and not expects_response:
+            await asyncio.sleep(0.5)
+        return
         
-        # Afspil
-        playsound.playsound(cache_path, block=False)
+    # For længere tekster, stream sætningsvist
+    total_sentences = len(sentences)
+    
+    for i, sentence in enumerate(sentences):
+        if not sentence.strip():
+            continue
+        
+        # For sidste sætning, tjek om det er et spørgsmål eller forventning
+        if i == total_sentences - 1 and expects_response:
+            # Tilføj lidt ekstra pause for at indikere vi venter på svar
+            await speak_async(sentence, lang)
+            if wait_after:
+                await asyncio.sleep(0.5)  # Lidt længere pause ved afventning af svar
+        else:
+            # Normal sætning i en sekvens
+            await speak_async(sentence, lang)
             
-    except Exception as e:
-        logger.error(f"TTS fejl: {e}")
-        print(f"Fejl ved afspilning af tale: {e}")
+            # Kort pause mellem sætninger, længere hvis det er punktum
+            if i < total_sentences - 1:  # Ikke på sidste sætning
+                pause_time = 0.3
+                if sentence.strip().endswith('.'):
+                    pause_time = 0.5  # Længere pause efter punktum
+                elif sentence.strip().endswith(','):
+                    pause_time = 0.2  # Kortere pause efter komma
+                
+                await asyncio.sleep(pause_time)
+    
+    # Hvis teksten indeholder et spørgsmål eller forventning, vent længere
+    if wait_after and expects_response:
+        await asyncio.sleep(0.5)  # Giv brugeren tid til at svare
 
 # Async-versioner af funktionerne til brug med asyncio
 async def transcribe_audio_async(file_path: str) -> Optional[str]:
@@ -548,7 +624,36 @@ async def record_audio_async() -> Optional[str]:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, record_audio)
 
-async def speak_async(text: str, lang: str = 'da') -> None:
-    """Asynkron wrapper for speak"""
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, lambda: speak(text, lang)) 
+def speak(text: str, lang: str = 'da') -> None:
+    """
+    Synkron version af speak_async.
+    Konverterer tekst til tale og afspiller den øjeblikkeligt.
+    
+    Args:
+        text: Teksten der skal udtales
+        lang: Sproget (default: dansk)
+    """
+    logger.info(f"TTS synkron: '{text}'")
+    
+    # Generer et unikt filnavn baseret på tekst og sprog
+    text_hash = hashlib.md5(f"{text}_{lang}".encode('utf-8')).hexdigest()
+    mp3_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
+    
+    # Opret cache-mappe hvis den ikke eksisterer
+    os.makedirs(TTS_CACHE_DIR, exist_ok=True)
+    
+    # Tjek om vi har en cache af denne tekst
+    if not os.path.exists(mp3_path):
+        try:
+            tts = gTTS(text=text, lang=lang, slow=False)
+            tts.save(mp3_path)
+            logger.debug(f"TTS MP3 gemt til: {mp3_path}")
+        except Exception as e:
+            logger.error(f"Fejl ved generering af tale: {e}")
+            return None
+    
+    # Afspil lyden
+    try:
+        play_sound_blocking(mp3_path)
+    except Exception as e:
+        logger.error(f"Fejl ved afspilning af lyd: {e}")
