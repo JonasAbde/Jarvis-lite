@@ -11,9 +11,13 @@ from gtts import gTTS  # type: ignore
 import playsound # type: ignore
 import soundfile as sf  # type: ignore
 import asyncio
-import tempfile
+from tempfile import NamedTemporaryFile
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
+from pathlib import Path
+import torch
+from faster_whisper import WhisperModel
+import pygame
 
 # Forsøg at importere pyaudio, med sounddevice som backup
 USE_PYAUDIO = True
@@ -40,7 +44,13 @@ CHANNELS = 1
 RATE = 16000
 CHUNK = 1024
 TEMP_WAV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "temp_recording.wav")
-TTS_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache", "tts")
+TTS_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "cache", "tts")
+VOICES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "voices")
+
+# Brugerdefinerede stemmer
+AVAILABLE_VOICES = []  # Populeres ved initialisering
+CURRENT_VOICE = None   # Aktuelt valgte stemme
+DEFAULT_VOICE_ID = "default"  # Brug standard gTTS
 
 # Logger
 logger = logging.getLogger(__name__)
@@ -49,6 +59,124 @@ logger = logging.getLogger(__name__)
 SPEECH_QUEUE = []  # Kø til ventende taleafspilninger
 CURRENTLY_SPEAKING = False  # Flag der indikerer om der er en igangværende taleafspilning
 SPEECH_LOCK = None  # Asyncio lock til at synkronisere taleafspilning
+
+# Funktion til at indlæse tilgængelige stemmer
+def initialize_voices() -> None:
+    """Indlæser tilgængelige stemmer fra voices-mappen"""
+    global AVAILABLE_VOICES
+    AVAILABLE_VOICES = []
+    
+    # Tilføj standardstemme (gTTS)
+    AVAILABLE_VOICES.append({
+        "id": DEFAULT_VOICE_ID,
+        "name": "Google TTS (Standard)",
+        "engine": "gtts",
+        "language": "da",
+        "gender": "neutral",
+        "path": None
+    })
+    
+    if not os.path.exists(VOICES_DIR):
+        logger.warning(f"Voices-mappe findes ikke: {VOICES_DIR}")
+        return
+    
+    try:
+        # Find brugerdefinerede stemme-mapper
+        for voice_dir in os.listdir(VOICES_DIR):
+            voice_path = os.path.join(VOICES_DIR, voice_dir)
+            if os.path.isdir(voice_path):
+                # Tjek om mappen indeholder wav-filer
+                wav_files = [f for f in os.listdir(voice_path) if f.endswith('.wav')]
+                if wav_files:
+                    AVAILABLE_VOICES.append({
+                        "id": voice_dir,
+                        "name": voice_dir.capitalize(),
+                        "engine": "custom",
+                        "language": "da",
+                        "gender": "unknown",
+                        "path": voice_path,
+                        "samples": [os.path.join(voice_path, f) for f in wav_files]
+                    })
+        
+        logger.info(f"Fandt {len(AVAILABLE_VOICES)-1} brugerdefinerede stemmer")
+        
+    except Exception as e:
+        logger.error(f"Fejl under indlæsning af stemmer: {e}")
+
+# Funktion til at hente tilgængelige stemmer
+def get_available_voices() -> List[Dict[str, Any]]:
+    """Returnerer liste med tilgængelige stemmer"""
+    if not AVAILABLE_VOICES:
+        initialize_voices()
+    return AVAILABLE_VOICES
+
+# Funktion til at vælge stemme
+def set_voice(voice_id: str) -> bool:
+    """
+    Vælger den aktive stemme
+    
+    Args:
+        voice_id: ID for stemmen der skal bruges
+        
+    Returns:
+        bool: True hvis stemmen blev sat, False ved fejl
+    """
+    global CURRENT_VOICE
+    
+    # Indlæs stemmer hvis nødvendigt
+    if not AVAILABLE_VOICES:
+        initialize_voices()
+    
+    # Find stemmen med det angivne ID
+    matching_voices = [v for v in AVAILABLE_VOICES if v["id"] == voice_id]
+    if matching_voices:
+        CURRENT_VOICE = matching_voices[0]
+        logger.info(f"Stemme sat til: {CURRENT_VOICE['name']} (ID: {CURRENT_VOICE['id']})")
+        return True
+    else:
+        logger.warning(f"Kunne ikke finde stemme med ID: {voice_id}")
+        # Brug standardstemme som fallback
+        default_voice = next((v for v in AVAILABLE_VOICES if v["id"] == DEFAULT_VOICE_ID), None)
+        if default_voice:
+            CURRENT_VOICE = default_voice
+            logger.info(f"Faldt tilbage til standardstemme: {CURRENT_VOICE['name']}")
+            return True
+        return False
+
+# Funktion til at få den aktuelle stemme
+def get_current_voice() -> Dict[str, Any]:
+    """Returnerer information om den aktuelt valgte stemme"""
+    global CURRENT_VOICE
+    
+    if not CURRENT_VOICE:
+        # Indlæs stemmer hvis nødvendigt
+        if not AVAILABLE_VOICES:
+            initialize_voices()
+        
+        # Vælg standardstemmen
+        # Hvis standardstemmen ikke findes i AVAILABLE_VOICES, tilføj den
+        default_voice = next((v for v in AVAILABLE_VOICES if v["id"] == DEFAULT_VOICE_ID), None)
+        if not default_voice:
+            # Dette burde ikke ske, men som sikkerhed
+            logger.warning("Standardstemme mangler, tilføjer den igen")
+            default_voice = {
+                "id": DEFAULT_VOICE_ID,
+                "name": "Google TTS (Standard)",
+                "engine": "gtts",
+                "language": "da",
+                "gender": "neutral",
+                "path": None
+            }
+            AVAILABLE_VOICES.append(default_voice)
+        
+        CURRENT_VOICE = default_voice
+        logger.info(f"Automatisk valgt stemme: {CURRENT_VOICE['name']}")
+    
+    return CURRENT_VOICE
+
+# Initialiser stemmer ved import
+initialize_voices()
+set_voice(DEFAULT_VOICE_ID)  # Start med standardstemmen
 
 def load_whisper_model():
     """Indlæser Whisper-modellen til STT"""
@@ -503,18 +631,17 @@ def danish_text_cleanup(text: str) -> str:
     
     return text
 
-# Simpel funktion til at afspille lydfil synkront (blokerende)
-def play_sound_blocking(mp3_path):
+def play_sound_blocking(file_path: str) -> None:
     """
-    Afspiller en lydfil blokerende (venter til den er færdig)
+    Afspiller en lydfil blokerende
     
     Args:
-        mp3_path: Sti til lydfilen
+        file_path: Sti til lydfilen der skal afspilles
     """
     try:
-        playsound.playsound(mp3_path, block=True)
+        playsound.playsound(file_path)
     except Exception as e:
-        logger.error(f"Fejl ved afspilning af lyd: {e}")
+        logger.error(f"Fejl under afspilning af lyd: {e}")
 
 # Opdater den asynkrone wrapper til at vente på at lyden afspilles færdig
 async def speak_async(text: str, lang: str = 'da') -> None:
@@ -530,6 +657,7 @@ async def speak_async(text: str, lang: str = 'da') -> None:
     
     # Print output til konsollen (synlig feedback)
     print(f"🔊 Jarvis: {text}")
+    
     # Tjek cache først
     text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
     os.makedirs(TTS_CACHE_DIR, exist_ok=True)
@@ -542,7 +670,7 @@ async def speak_async(text: str, lang: str = 'da') -> None:
         tts = gTTS(text=text, lang=lang, slow=False)
         
         # Brug midlertidigt filnavn
-        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_file:
+        with NamedTemporaryFile(suffix='.mp3', delete=False) as temp_file:
             temp_filename = temp_file.name
         
         # Gem til temp fil og flyt
@@ -613,17 +741,6 @@ async def stream_speak(text: str, lang: str = 'da', wait_after: bool = True) -> 
     if wait_after and expects_response:
         await asyncio.sleep(0.5)  # Giv brugeren tid til at svare
 
-# Async-versioner af funktionerne til brug med asyncio
-async def transcribe_audio_async(file_path: str) -> Optional[str]:
-    """Asynkron wrapper for transcribe_audio"""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: transcribe_audio(file_path))
-
-async def record_audio_async() -> Optional[str]:
-    """Asynkron wrapper for record_audio"""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, record_audio)
-
 def speak(text: str, lang: str = 'da') -> None:
     """
     Synkron version af speak_async.
@@ -635,8 +752,11 @@ def speak(text: str, lang: str = 'da') -> None:
     """
     logger.info(f"TTS synkron: '{text}'")
     
+    # Rens tekst
+    text = danish_text_cleanup(text)
+    
     # Generer et unikt filnavn baseret på tekst og sprog
-    text_hash = hashlib.md5(f"{text}_{lang}".encode('utf-8')).hexdigest()
+    text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
     mp3_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
     
     # Opret cache-mappe hvis den ikke eksisterer
@@ -650,10 +770,95 @@ def speak(text: str, lang: str = 'da') -> None:
             logger.debug(f"TTS MP3 gemt til: {mp3_path}")
         except Exception as e:
             logger.error(f"Fejl ved generering af tale: {e}")
-            return None
+            return
     
     # Afspil lyden
     try:
         play_sound_blocking(mp3_path)
     except Exception as e:
         logger.error(f"Fejl ved afspilning af lyd: {e}")
+
+# Async-versioner af funktionerne til brug med asyncio
+async def transcribe_audio_async(file_path: str) -> Optional[str]:
+    """Asynkron wrapper for transcribe_audio"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: transcribe_audio(file_path))
+
+async def record_audio_async() -> Optional[str]:
+    """Asynkron wrapper for record_audio"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, record_audio)
+
+class SpeechHandler:
+    """Klasse til håndtering af tale-til-tekst og tekst-til-tale"""
+    
+    def __init__(self):
+        # Initialiser STT model (Faster Whisper)
+        logger.info("Indlæser Whisper model...")
+        self.stt_model = WhisperModel(
+            model_size_or_path="small",
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            compute_type="float16" if torch.cuda.is_available() else "int8"
+        )
+        
+        # Initialiser pygame til lydafspilning
+        pygame.mixer.init()
+        
+        # Cache mappe til TTS
+        self.cache_dir = Path("cache/tts")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Lydindstillinger
+        self.sample_rate = 16000
+        self.channels = 1
+    
+    async def record_audio(self) -> str:
+        """Optag lyd fra mikrofon"""
+        logger.info("Optager...")
+        
+        # Start optagelse
+        recording = sd.rec(
+            int(30 * self.sample_rate),  # Max 30 sekunder
+            samplerate=self.sample_rate,
+            channels=self.channels,
+            dtype=np.int16
+        )
+        
+        sd.wait()  # Vent på optagelse er færdig
+        
+        # Gem lydfil
+        temp_file = NamedTemporaryFile(suffix=".wav", delete=False)
+        sf.write(temp_file.name, recording, self.sample_rate)
+        
+        return temp_file.name
+    
+    async def transcribe_audio(self, audio_path: str) -> str:
+        """Konverter tale til tekst"""
+        segments, _ = self.stt_model.transcribe(
+            audio_path,
+            language="da",
+            beam_size=5
+        )
+        return " ".join([seg.text for seg in segments])
+    
+    async def speak_text(self, text: str) -> None:
+        """Konverter tekst til tale og afspil"""
+        if not text.strip():
+            text = "Undskyld, jeg ved ikke hvad jeg skal svare. Kan du omformulere dit spørgsmål?"
+            
+        # Generer unik filsti i cache
+        output_path = self.cache_dir / f"response_{hash(text)}.mp3"
+        
+        # Hvis ikke i cache, generer ny lydfil
+        if not output_path.exists():
+            tts = gTTS(text=text, lang="da")
+            tts.save(str(output_path))
+        
+        # Afspil svar
+        pygame.mixer.music.load(str(output_path))
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            await asyncio.sleep(0.1)
+
+# Global instance
+speech_handler = SpeechHandler()

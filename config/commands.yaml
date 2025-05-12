@@ -1,0 +1,46 @@
+# Jarvis-Lite kommando-konfiguration
+commands:
+  greeting:
+    patterns:
+      - "hej"
+      - "goddag"
+      - "godmorgen"
+      - "godaften"
+    response: "Hej! Hvordan kan jeg hjælpe dig i dag?"
+
+  farewell:
+    patterns:
+      - "farvel"
+      - "vi ses"
+      - "hej hej"
+    response: "Farvel! Hav en god dag!"
+
+  time:
+    patterns:
+      - "hvad er klokken"
+      - "hvad er tiden"
+    function: "get_time"
+
+  date:
+    patterns:
+      - "hvad er datoen"
+      - "hvilken dag er det"
+    function: "get_date"
+
+  weather:
+    patterns:
+      - "hvordan er vejret"
+      - "vejrudsigt"
+    function: "get_weather"
+
+  jokes:
+    patterns:
+      - "fortæl en joke"
+      - "fortæl noget sjovt"
+    function: "tell_joke"
+
+  help:
+    patterns:
+      - "hjælp"
+      - "hvad kan du"
+    response: "Jeg kan hjælpe dig med mange ting! For eksempel kan jeg fortælle tid og dato, vejret, fortælle jokes, og meget mere." 

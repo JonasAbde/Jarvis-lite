@@ -28,7 +28,7 @@ venv/
 ENV/
 env/
 .venv/
-.env/
+# Virtualenv
 
 # IDE / Editor specifikt
 .vscode/
@@ -62,8 +62,6 @@ Desktop.ini
 
 # Virtual Environment
 venv/
-env/
-ENV/
 
 # IDE
 .vscode/
@@ -88,9 +86,7 @@ models/*.bin
 *.wav
 *.mp3
 
-# Environment variables
-.env
-
+models/*.pth
 # Temporary files
 *.tmp
 *.temp
@@ -193,12 +189,8 @@ celerybeat-schedule
 *.sage.py
 
 # Environments
-.env
 .venv
-env/
 venv/
-ENV/
-env.bak/
 venv.bak/
 
 # VSCode

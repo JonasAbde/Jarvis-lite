@@ -14,6 +14,9 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report
 import joblib # Til at gemme og loade modellen
 from typing import Tuple, Dict, Any, List, Optional
+from datetime import datetime
+import asyncio
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,15 @@ DATA_FILE_PATH = "data/nlu_training_data.json" # Sti til din JSON-fil med intent
 MODEL_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.joblib")
 VECTORIZER_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectorizer.joblib")
 LABELS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "labels.joblib")
+
+# Nye stier til automatisering
+FEEDBACK_DIR = "data/nlu_feedback"
+LOW_CONFIDENCE_FILE = os.path.join(FEEDBACK_DIR, "low_confidence_predictions.json")
+CONFIRMED_EXAMPLES_FILE = os.path.join(FEEDBACK_DIR, "confirmed_examples.json")
+RETRAIN_THRESHOLD = 50  # Antal nye eksempler før automatisk gentræning
+
+# Sikr at feedback-mapper eksisterer
+os.makedirs(FEEDBACK_DIR, exist_ok=True)
 
 # Download nødvendige NLTK data hvis de ikke allerede findes
 # Dette er for tokenisering. Stopord og stemming kan kræve yderligere downloads.
@@ -119,6 +131,138 @@ class NLUClassifier:
         self.pipeline: Optional[Pipeline] = None
         self.intent_labels: Optional[List[str]] = None
         self._load_model()
+        self.new_examples_count = self._load_new_examples_count()
+
+    def _load_new_examples_count(self) -> int:
+        """Indlæser antallet af nye eksempler siden sidste træning."""
+        try:
+            if os.path.exists(CONFIRMED_EXAMPLES_FILE):
+                with open(CONFIRMED_EXAMPLES_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return len(data.get("examples", []))
+        except Exception as e:
+            logger.error(f"Fejl ved indlæsning af nye eksempler: {e}")
+        return 0
+
+    async def log_low_confidence(self, text: str, predicted_intent: str, confidence: float):
+        """Logger lav-konfidens forudsigelser til senere review."""
+        try:
+            existing_data = []
+            if os.path.exists(LOW_CONFIDENCE_FILE):
+                with open(LOW_CONFIDENCE_FILE, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f).get("predictions", [])
+
+            new_prediction = {
+                "text": text,
+                "predicted_intent": predicted_intent,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            existing_data.append(new_prediction)
+            
+            with open(LOW_CONFIDENCE_FILE, 'w', encoding='utf-8') as f:
+                json.dump({"predictions": existing_data}, f, indent=2, ensure_ascii=False)
+                
+            logger.info(f"Logget lav-konfidens forudsigelse: {text} -> {predicted_intent} ({confidence:.2f})")
+        except Exception as e:
+            logger.error(f"Fejl ved logging af lav-konfidens forudsigelse: {e}")
+
+    async def add_confirmed_example(self, text: str, intent: str, confidence: float = None):
+        """Tilføjer et bekræftet eksempel til træningsdataene."""
+        try:
+            existing_data = []
+            if os.path.exists(CONFIRMED_EXAMPLES_FILE):
+                with open(CONFIRMED_EXAMPLES_FILE, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f).get("examples", [])
+
+            new_example = {
+                "text": text,
+                "intent": intent,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            existing_data.append(new_example)
+            self.new_examples_count += 1
+            
+            with open(CONFIRMED_EXAMPLES_FILE, 'w', encoding='utf-8') as f:
+                json.dump({"examples": existing_data}, f, indent=2, ensure_ascii=False)
+                
+            logger.info(f"Tilføjet nyt bekræftet eksempel: {text} -> {intent}")
+            
+            # Tjek om vi skal gentræne modellen
+            if self.new_examples_count >= RETRAIN_THRESHOLD:
+                await self.auto_retrain()
+                
+        except Exception as e:
+            logger.error(f"Fejl ved tilføjelse af bekræftet eksempel: {e}")
+
+    async def auto_retrain(self):
+        """Automatisk gentræning af modellen med nye eksempler."""
+        try:
+            logger.info("Starter automatisk gentræning af model...")
+            
+            # Indlæs original træningsdata
+            patterns, intents = load_training_data()
+            
+            # Indlæs nye bekræftede eksempler
+            if os.path.exists(CONFIRMED_EXAMPLES_FILE):
+                with open(CONFIRMED_EXAMPLES_FILE, 'r', encoding='utf-8') as f:
+                    new_examples = json.load(f).get("examples", [])
+                    
+                for example in new_examples:
+                    patterns.append(example["text"])
+                    intents.append(example["intent"])
+            
+            # Gentræn modellen
+            self.train(patterns, intents, perform_grid_search=True)
+            
+            # Nulstil tæller og flyt bekræftede eksempler til historik
+            self.new_examples_count = 0
+            self._archive_confirmed_examples()
+            
+            logger.info("Automatisk gentræning gennemført succesfuldt")
+            
+        except Exception as e:
+            logger.error(f"Fejl under automatisk gentræning: {e}")
+
+    def _archive_confirmed_examples(self):
+        """Arkiverer bekræftede eksempler efter gentræning."""
+        try:
+            if os.path.exists(CONFIRMED_EXAMPLES_FILE):
+                archive_dir = os.path.join(FEEDBACK_DIR, "archive")
+                os.makedirs(archive_dir, exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                archive_file = os.path.join(archive_dir, f"confirmed_examples_{timestamp}.json")
+                
+                # Flyt filen til arkiv
+                os.rename(CONFIRMED_EXAMPLES_FILE, archive_file)
+                
+                # Opret ny tom fil
+                with open(CONFIRMED_EXAMPLES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump({"examples": []}, f)
+                    
+                logger.info(f"Arkiveret bekræftede eksempler til {archive_file}")
+                
+        except Exception as e:
+            logger.error(f"Fejl under arkivering af bekræftede eksempler: {e}")
+
+    async def predict(self, text: str, confidence_threshold: float = 0.55) -> Optional[Dict[str, Any]]:
+        """Forudsiger intent med automatisk håndtering af lav konfidens."""
+        result = super().predict(text, confidence_threshold)
+        
+        if result:
+            confidence = result.get("confidence", 0)
+            predicted_intent = result.get("intent")
+            
+            if confidence < confidence_threshold:
+                # Log lav-konfidens forudsigelse
+                await self.log_low_confidence(text, predicted_intent, confidence)
+                
+            return result
+        return None
 
     def _create_pipeline(self) -> Pipeline:
         """Opretter en scikit-learn pipeline for NLU."""

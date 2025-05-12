@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis Web Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', path='/css/main.css') }}" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white p-4">
+            <div class="container mx-auto flex justify-between items-center">
+                <div class="text-xl font-bold">Jarvis</div>
+                <div class="flex space-x-4">
+                    <a href="/" class="hover:text-gray-300">Chat</a>
+                    <a href="/training" class="hover:text-gray-300">Træning</a>
+                    <a href="/visualization" class="hover:text-gray-300">Visualisering</a>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="container mx-auto p-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Chat Section -->
+                <div class="md:col-span-2 bg-white rounded-lg shadow p-4">
+                    <div class="h-96 overflow-y-auto mb-4 p-4 border rounded" id="chat-messages">
+                        <template v-for="message in messages">
+                            <div :class="['mb-4', message.type === 'user' ? 'text-right' : '']">
+                                <div :class="['inline-block p-3 rounded-lg', 
+                                    message.type === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200']">
+                                    @{{ message.content }}
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="startRecording" 
+                                :class="['p-2 rounded-full', isRecording ? 'bg-red-500' : 'bg-gray-200']">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <input type="text" 
+                               v-model="userInput" 
+                               @keyup.enter="sendMessage"
+                               class="flex-1 p-2 border rounded"
+                               placeholder="Skriv en besked...">
+                        <button @click="sendMessage" 
+                                class="bg-blue-500 text-white px-4 py-2 rounded">
+                            Send
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status Panel -->
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h2 class="text-xl font-bold mb-4">System Status</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <h3 class="font-semibold">NLU Confidence</h3>
+                            <div class="w-full bg-gray-200 rounded">
+                                <div :style="{ width: nluConfidence + '%' }"
+                                     class="bg-green-500 text-xs text-white text-center p-1 rounded">
+                                    @{{ nluConfidence }}%
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold">Aktiv Model</h3>
+                            <p>@{{ activeModel }}</p>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold">System Load</h3>
+                            <p>@{{ systemLoad }}%</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+</body>
+</html> 

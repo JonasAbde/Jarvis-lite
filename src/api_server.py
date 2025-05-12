@@ -10,6 +10,12 @@ import threading
 import uvicorn # Bruges til at køre FastAPI appen
 from typing import Optional, List, Dict, Any, Set
 import asyncio
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
+import numpy as np
+import tensorflow as tf
 
 # Konfigurer logging
 logging.basicConfig(
@@ -512,6 +518,70 @@ async def get_logo():
         else:
             # Hvis ingen logo findes, returner en 404
             raise HTTPException(status_code=404, detail="Logo ikke fundet")
+
+# --- Nye endpoints til tale-til-tekst konvertering ---
+@app.post("/api/speech-to-text")
+async def speech_to_text(audio: UploadFile = File(...)):
+    try:
+        # Gem midlertidig lydfil
+        audio_path = Path("temp") / audio.filename
+        audio_path.parent.mkdir(exist_ok=True)
+        
+        with audio_path.open("wb") as f:
+            content = await audio.read()
+            f.write(content)
+        
+        # Konverter tale til tekst
+        text = await speech_handler.speech_to_text(str(audio_path))
+        
+        # Slet midlertidig fil
+        audio_path.unlink()
+        
+        return JSONResponse({
+            "success": True,
+            "text": text
+        })
+        
+    except Exception as e:
+        logger.error(f"Fejl under tale-til-tekst konvertering: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.post("/api/import-data")
+async def import_training_data(data: UploadFile = File(...)):
+    try:
+        content = await data.read()
+        if data.filename.endswith('.json'):
+            training_data = json.loads(content)
+        elif data.filename.endswith('.csv'):
+            # TODO: Implementer CSV import
+            pass
+        else:
+            return JSONResponse({
+                "success": False,
+                "error": "Ugyldigt filformat. Kun JSON og CSV er understøttet."
+            }, status_code=400)
+        
+        # Import data til træning
+        success = await brain.import_training_data(training_data)
+        
+        return JSONResponse({
+            "success": success
+        })
+        
+    except Exception as e:
+        logger.error(f"Fejl under import af træningsdata: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+# Hovedside
+@app.get("/")
+async def root(request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 if __name__ == "__main__":
     port = 8000
