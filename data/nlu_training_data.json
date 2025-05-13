@@ -1,0 +1,51 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": [
+        "hej",
+        "goddag",
+        "hallo",
+        "davs"
+      ],
+      "responses": [
+        "Hej!",
+        "Goddag!"
+      ]
+    },
+    {
+      "tag": "goodbye",
+      "patterns": [
+        "farvel",
+        "vi ses",
+        "på gensyn"
+      ],
+      "responses": [
+        "Farvel!",
+        "Vi ses!"
+      ]
+    },
+    {
+      "tag": "get_time",
+      "patterns": [
+        "hvad er klokken",
+        "hvad er tiden",
+        "tiden tak"
+      ],
+      "responses": [
+        "Klokken er..."
+      ]
+    },
+    {
+      "tag": "get_weather",
+      "patterns": [
+        "hvordan er vejret",
+        "vejret i dag",
+        "solskin?"
+      ],
+      "responses": [
+        "Jeg tjekker vejret..."
+      ]
+    }
+  ]
+}

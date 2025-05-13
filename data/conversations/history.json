@@ -1,0 +1,22 @@
+[
+  {
+    "user": "husk at",
+    "assistant": "Jeg har gemt din note: 'at'. Skal jeg læse den op for dig?",
+    "timestamp": "2025-05-09 10:46:34"
+  },
+  {
+    "user": "hvad kan du",
+    "assistant": "Jeg kan fortælle dig klokken og datoen, åbne hjemmesider som YouTube og Google, gemme noter, fortælle jokes, give dig vejrudsigten og snart afspille musik. Hvad vil du gerne have hjælp med?",
+    "timestamp": "2025-05-09 10:47:00"
+  },
+  {
+    "user": "fortæl en joke",
+    "assistant": "Hvorfor gik computeren til lægen? Den havde en virus!",
+    "timestamp": "2025-05-09 10:49:09"
+  },
+  {
+    "user": "fortæl mig om dig selv",
+    "assistant": "Jeg er Jarvis, din danske AI-assistent. Jeg er bygget til at hjælpe med information, praktiske opgaver og samtale. Hvordan kan jeg assistere dig?",
+    "timestamp": "2025-05-09 10:49:38"
+  }
+]

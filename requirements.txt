@@ -1,36 +1,17 @@
-# Basiskrav
-numpy>=1.24.3
-scipy>=1.7.0
+# Base dependencies
+numpy>=1.26.0
+scipy>=1.11.4  # Specifik version for at undgå ufunc fejl
 scikit-learn>=1.2.2
-joblib>=1.0.0
-nltk>=3.9.0
 
-# Sprogmodeller
-torch>=2.0.0
-transformers>=4.30.0
-huggingface-hub>=0.16.0
+# LLM og NLP
+torch>=2.2.0
+transformers>=4.38.0
+accelerate>=0.27.0
+bitsandbytes>=0.45.0
+sentencepiece>=0.2.0
+tokenizers>=0.15.2
 
-# Tale-til-tekst (STT)
-faster-whisper>=0.9.0
-sounddevice>=0.4.6
-soundfile>=0.12.1
-pyaudio>=0.2.11
-
-# Tekst-til-tale (TTS)
-gtts>=2.5.0
-playsound==1.2.2
-
-# Udvikling og tests
-pytest>=7.3.1
-pytest-cov>=4.0.0
-mypy>=1.2.0
-black>=23.3.0
-flake8>=6.0.0
-
-# MCP-integration
-mcp
-
-# Web API og UI
+# Web og API
 fastapi>=0.95.0
 uvicorn>=0.21.1
 websockets>=11.0.3
@@ -39,34 +20,61 @@ jinja2>=3.1.2
 aiofiles>=23.2.1
 pydantic>=2.4.2
 
-# DeepSeek-R1 afhængigheder
-transformers>=4.38.0
-torch>=2.2.0
-accelerate>=0.27.0
-bitsandbytes>=0.45.0
-sentencepiece>=0.2.0
-einops>=0.7.0
-scipy>=1.12.0
-safetensors>=0.4.2
-tokenizers>=0.15.2
+# Audio processing
+sounddevice>=0.4.6
+soundfile>=0.12.1
+pyaudio>=0.2.11
+pygame>=2.6.1
 
-# Optimizations
-optimum>=1.17.0
-auto-gptq>=0.6.0
+# Text-to-Speech
+gtts>=2.5.0
+playsound>=1.2.2
+
+# Utilities
+tqdm>=4.65.0
+colorama>=0.4.6
+rich>=13.7.0
+psutil>=5.9.0
+requests>=2.31.0
+
+# Development
+pytest>=7.3.1
+black>=23.3.0
+flake8>=6.0.0
+
+# Udvikling og tests
+pytest-cov>=4.0.0
+mypy>=1.2.0
+black>=23.3.0
+flake8>=6.0.0
+
+# System monitoring
+psutil>=5.9.0
+requests>=2.31.0
+
+# Logging og formatering
+colorlog>=6.8.0
+
+# Sprogmodeller
+huggingface-hub>=0.16.0
+
+# Tale-til-tekst (STT)
+faster-whisper>=0.9.0
+
+# MCP-integration
+mcp>=1.8.1
 
 # LiveKit integration
-livekit-agents[deepgram,openai,cartesia,silero,turn-detector]~=1.0
-livekit-plugins-noise-cancellation~=0.2
+livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.0.0
+livekit-plugins-noise-cancellation>=0.2.0
 python-dotenv>=1.0.0
 
 # Nye afhængigheder til lydoptagelse og afspilning
 PyAudio
 keyboard
-pygame
 
 # Added from the code block
-tensorflow==2.15.0
+tensorflow>=2.15.0
 matplotlib>=3.7.1
 pandas>=2.0.0
 plotly>=5.14.0
-tqdm>=4.65.0

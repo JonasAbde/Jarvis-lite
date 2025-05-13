@@ -1,0 +1,57 @@
+{
+  "conversation_history": [
+    {
+      "user": "hej",
+      "jarvis": "Beklager, jeg forstod ikke helt, hvad du mente.",
+      "intent": "unknown_nlu",
+      "confidence": null,
+      "timestamp": 1746786190.1197624
+    },
+    {
+      "user": "hvad mener du ",
+      "jarvis": "Beklager, jeg forstod ikke helt, hvad du mente.",
+      "intent": "unknown_nlu",
+      "confidence": null,
+      "timestamp": 1746786198.786662
+    },
+    {
+      "user": "Hvad er du",
+      "jarvis": "Det giver god mening. Hvis du har flere tanker om emnet, vil jeg gerne høre dem.",
+      "intent": "llm_fallback",
+      "confidence": null,
+      "timestamp": 1746790071.572225
+    },
+    {
+      "user": "Hvad er du",
+      "jarvis": "Det giver god mening. Hvis du har flere tanker om emnet, vil jeg gerne høre dem.",
+      "intent": "llm_fallback",
+      "confidence": null,
+      "timestamp": 1746790107.8857455
+    },
+    {
+      "user": "hvad",
+      "jarvis": "Tak for din indsigt. Det giver mig noget at tænke over.",
+      "intent": "llm_fallback",
+      "confidence": null,
+      "timestamp": 1746790117.5746725
+    },
+    {
+      "user": "hej",
+      "jarvis": "Tak for din indsigt. Det giver mig noget at tænke over.",
+      "intent": "llm_fallback",
+      "confidence": null,
+      "timestamp": 1746790239.9110591
+    },
+    {
+      "user": "Hej Jarvis",
+      "jarvis": "Det giver god mening. Hvis du har flere tanker om emnet, vil jeg gerne høre dem.",
+      "intent": "llm_fallback",
+      "confidence": null,
+      "timestamp": 1746964085.8046408
+    }
+  ],
+  "active_context": null,
+  "expected_response": null,
+  "session_start": 1746786139.6240377,
+  "last_interaction": 1746964085.8046408
+}

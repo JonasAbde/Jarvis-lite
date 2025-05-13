@@ -208,9 +208,65 @@ async def get_index():
         </html>
         """)
 
-@app.get("/")
-async def root():
-    """Root endpoint - returnerer status information."""
+@app.get("/web/training")
+async def get_training_page():
+    """Serverer training.html filen"""
+    training_path = os.path.join(static_dir, "training.html")
+    if os.path.exists(training_path):
+        return FileResponse(training_path)
+    else:
+        logger.error(f"training.html ikke fundet i {static_dir}")
+        return HTMLResponse(content="""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Jarvis-Lite - Træning</title>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .error { color: #721c24; background: #f8d7da; padding: 20px; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <h1>Jarvis-Lite Fejl</h1>
+            <div class="error">
+                <p>Kunne ikke finde træningssiden. Kontroller at alle statiske filer er på plads.</p>
+            </div>
+        </body>
+        </html>
+        """)
+
+@app.get("/web/visualization")
+async def get_visualization_page():
+    """Serverer visualization.html filen"""
+    visualization_path = os.path.join(static_dir, "visualization.html")
+    if os.path.exists(visualization_path):
+        return FileResponse(visualization_path)
+    else:
+        logger.error(f"visualization.html ikke fundet i {static_dir}")
+        return HTMLResponse(content="""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Jarvis-Lite - Visualisering</title>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .error { color: #721c24; background: #f8d7da; padding: 20px; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <h1>Jarvis-Lite Fejl</h1>
+            <div class="error">
+                <p>Kunne ikke finde visualiseringssiden. Kontroller at alle statiske filer er på plads.</p>
+            </div>
+        </body>
+        </html>
+        """)
+
+@app.get("/api/status")
+async def api_status():
+    """API status endpoint - returnerer status information."""
     return {
         "status": "active",
         "jarvis_core": JARVIS_CORE_AVAILABLE,

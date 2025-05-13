@@ -1,6 +1,5 @@
 """
-LLM-modul for Jarvis Lite
-Indeholder funktioner til at arbejde med store sprogmodeller.
+LLM Module for Jarvis-Lite
 """
 
 # Eksportér de vigtigste funktioner

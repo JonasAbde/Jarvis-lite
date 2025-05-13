@@ -1,0 +1,42 @@
+{
+    "environment": "development",
+    "model": {
+        "name": "mistralai/Mistral-7B-v0.1",
+        "cache_dir": "models/cache",
+        "quantization": {
+            "load_in_4bit": true,
+            "bnb_4bit_compute_dtype": "float16",
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_use_double_quant": true
+        },
+        "generation": {
+            "max_length": 200,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "top_k": 50,
+            "repetition_penalty": 1.2
+        }
+    },
+    "server": {
+        "host": "localhost",
+        "port": 8000,
+        "debug": true,
+        "reload": true
+    },
+    "logging": {
+        "level": "DEBUG",
+        "file": "logs/jarvis_dev.log",
+        "format": "%(asctime)s - %(name)s [%(levelname)s] - %(message)s"
+    },
+    "features": {
+        "voice_enabled": true,
+        "web_interface": true,
+        "training_enabled": true
+    },
+    "development": {
+        "auto_reload": true,
+        "show_debug_info": true,
+        "mock_responses": false,
+        "test_mode": false
+    }
+} 

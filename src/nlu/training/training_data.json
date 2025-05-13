@@ -1,0 +1,318 @@
+{
+  "intents": [
+    {
+      "intent": "greeting",
+      "examples": [
+        "hej",
+        "goddag",
+        "godmorgen",
+        "godaften",
+        "hejsa",
+        "davs",
+        "halløj",
+        "hej med dig",
+        "hej jarvis",
+        "goddag jarvis",
+        "hej du",
+        "hello",
+        "hi",
+        "hej igen",
+        "jeg er hjemme",
+        "jeg er tilbage"
+      ]
+    },
+    {
+      "intent": "farewell",
+      "examples": [
+        "farvel",
+        "hej hej",
+        "vi ses",
+        "på gensyn",
+        "tak for nu",
+        "ses senere",
+        "farvel jarvis",
+        "sluk dig selv",
+        "jeg går nu",
+        "jeg er færdig",
+        "det var alt",
+        "tak for hjælpen",
+        "vi snakkes ved",
+        "hav en god dag"
+      ]
+    },
+    {
+      "intent": "thanks",
+      "examples": [
+        "tak",
+        "mange tak",
+        "tusind tak",
+        "tak skal du have",
+        "jeg er taknemmelig",
+        "det sætter jeg pris på",
+        "dejligt",
+        "tak for hjælpen",
+        "super",
+        "perfekt",
+        "det var lige hvad jeg havde brug for",
+        "godt arbejde",
+        "tak jarvis"
+      ]
+    },
+    {
+      "intent": "help",
+      "examples": [
+        "hjælp",
+        "jeg har brug for hjælp",
+        "kan du hjælpe mig",
+        "hjælp mig",
+        "hvad kan du",
+        "hvilke kommandoer forstår du",
+        "hvad kan jeg spørge om",
+        "hvad kan du hjælpe med",
+        "vis mig hvad du kan",
+        "hvilke funktioner har du",
+        "hvordan bruger jeg dig",
+        "jeg ved ikke hvad jeg skal spørge om"
+      ]
+    },
+    {
+      "intent": "time",
+      "examples": [
+        "hvad er klokken",
+        "hvad tid er det",
+        "klokken",
+        "tidspunkt",
+        "kan du fortælle mig hvad klokken er",
+        "fortæl mig tiden",
+        "hvad siger klokken",
+        "hvad er tiden",
+        "hvor meget er klokken",
+        "har du et ur",
+        "vis mig tiden"
+      ]
+    },
+    {
+      "intent": "date",
+      "examples": [
+        "hvilken dag er det",
+        "hvad er datoen",
+        "hvilken dato er det",
+        "hvad er det for en dag i dag",
+        "hvilken ugedag er det",
+        "hvornår er vi",
+        "hvilken dag i ugen er det",
+        "hvilken måned er det",
+        "dato",
+        "kalender",
+        "hvilken dag er det i dag"
+      ]
+    },
+    {
+      "intent": "weather",
+      "examples": [
+        "hvordan er vejret",
+        "vejrudsigt",
+        "regner det",
+        "vil det regne i dag",
+        "er det solskin",
+        "hvad er temperaturen",
+        "er det godt vejr",
+        "bliver det godt vejr i dag",
+        "hvordan bliver vejret",
+        "bliver det regnvejr",
+        "skinner solen",
+        "vejr",
+        "vil det regne",
+        "hvor varmt er det"
+      ]
+    },
+    {
+      "intent": "identity",
+      "examples": [
+        "hvem er du",
+        "hvad hedder du",
+        "hvad er dit navn",
+        "fortæl mig om dig selv",
+        "hvad er du",
+        "er du en robot",
+        "er du et menneske",
+        "er du en ai",
+        "hvad kan du fortælle om dig selv",
+        "hvordan virker du",
+        "hvem har lavet dig",
+        "hvordan blev du skabt",
+        "hvad er din rolle"
+      ]
+    },
+    {
+      "intent": "capabilities",
+      "examples": [
+        "hvad kan du",
+        "hvad er dine evner",
+        "hvad er dine funktioner",
+        "hvad kan du gøre for mig",
+        "hvad kan du hjælpe mig med",
+        "hvad er dine muligheder",
+        "fortæl mig hvad du kan",
+        "kan du besvare spørgsmål",
+        "kan du hjælpe mig med noget",
+        "hvad er dine begrænsninger",
+        "kan du gøre noget for mig",
+        "hvad kan jeg bruge dig til"
+      ]
+    },
+    {
+      "intent": "jokes",
+      "examples": [
+        "fortæl en joke",
+        "fortæl mig noget sjovt",
+        "kan du fortælle en vittighed",
+        "sig noget sjovt",
+        "får du mig til at grine",
+        "kender du nogen jokes",
+        "har du en god vittighed",
+        "jeg kunne godt bruge et grin",
+        "fortæl mig en vittighed",
+        "noget til at muntre mig op"
+      ]
+    },
+    {
+      "intent": "search",
+      "examples": [
+        "søg efter",
+        "find information om",
+        "google",
+        "kan du finde",
+        "søg på nettet efter",
+        "slå op",
+        "jeg leder efter information om",
+        "kan du søge efter",
+        "internettet",
+        "wiki",
+        "find data om",
+        "søg på",
+        "har du information om",
+        "hvad ved du om"
+      ]
+    },
+    {
+      "intent": "music",
+      "examples": [
+        "spil musik",
+        "spil noget musik",
+        "spil en sang",
+        "kan du spille noget musik",
+        "start musikafspiller",
+        "jeg vil gerne høre musik",
+        "sæt noget musik på",
+        "spil min yndlingssang",
+        "afspil musik",
+        "start afspilning",
+        "afspil den næste sang",
+        "afspil mit album"
+      ]
+    },
+    {
+      "intent": "notes",
+      "examples": [
+        "tag et notat",
+        "skriv ned",
+        "husk",
+        "lav en note",
+        "lav en påmindelse",
+        "påmind mig om",
+        "gem denne information",
+        "kan du notere",
+        "tilføj til listen",
+        "skriv på min liste",
+        "gem et notat om",
+        "lav en huskeliste"
+      ]
+    },
+    {
+      "intent": "alarm",
+      "examples": [
+        "sæt en alarm",
+        "væk mig",
+        "sæt en timer",
+        "påmind mig om",
+        "sæt en påmindelse",
+        "alarm til",
+        "vække",
+        "vækur",
+        "vækkeur",
+        "timer",
+        "nedtælling",
+        "sæt en alarm til klokken",
+        "vækketid"
+      ]
+    },
+    {
+      "intent": "news",
+      "examples": [
+        "hvad er de seneste nyheder",
+        "nyheder",
+        "hvad sker der i verden",
+        "fortæl mig om nyhederne",
+        "seneste begivenheder",
+        "opdatering på nyhederne",
+        "hvad er der sket",
+        "i nyhederne",
+        "breaking news",
+        "nyheder i dag",
+        "aktuelle begivenheder"
+      ]
+    },
+    {
+      "intent": "volume",
+      "examples": [
+        "skru op",
+        "skru ned",
+        "højere",
+        "lavere",
+        "lydstyrke op",
+        "lydstyrke ned",
+        "skru op for lyden",
+        "skru ned for lyden",
+        "mute",
+        "slå lyden fra",
+        "slå lyden til",
+        "maksimal lydstyrke",
+        "minimum lydstyrke"
+      ]
+    },
+    {
+      "intent": "repeat",
+      "examples": [
+        "gentag det",
+        "sig det igen",
+        "hvad sagde du",
+        "kan du gentage det",
+        "jeg hørte ikke hvad du sagde",
+        "gentag venligst",
+        "hvad var det du sagde",
+        "jeg forstod ikke",
+        "hvad var det sidste du sagde",
+        "gentag dit svar",
+        "hvad mente du"
+      ]
+    },
+    {
+      "intent": "training",
+      "examples": [
+        "lær mere",
+        "bliv bedre",
+        "træn dig selv",
+        "kan du lære",
+        "kan du blive bedre",
+        "bliv bedre til at forstå mig",
+        "bliv smartere",
+        "forbedring",
+        "træn din model",
+        "hvordan bliver du trænet",
+        "kan jeg hjælpe dig med at lære",
+        "jeg vil gerne træne dig"
+      ]
+    }
+  ]
+}

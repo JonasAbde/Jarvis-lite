@@ -1,122 +1,114 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks
+import sys
+from pathlib import Path
+
+# Tilføj parent directory til Python path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pathlib import Path
 import logging
 import json
-import asyncio
-from typing import Optional, Dict, Any, List
+from src.nlu.handler import NLUHandler
+from src.llm.handler import LLMHandler
 
 # Konfigurer logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Konstanter
-RETRAIN_THRESHOLD = 10
-NLU_CONFIDENCE_THRESHOLD = 0.55
-
-# Initialiser FastAPI app
+# Initialiser FastAPI app og handlers
 app = FastAPI(title="Jarvis Web Interface")
+nlu_handler = NLUHandler()
+llm_handler = LLMHandler()
 
 # Opsæt stier til statiske filer og templates
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-# Fallback NLU klasse
-class SimulatedNLUClassifier:
-    async def predict(self, text: str) -> Dict[str, Any]:
-        return {
-            "intent": "simulated_intent",
-            "confidence": 0.8
-        }
-    
-    async def log_low_confidence(self, text: str, intent: str, confidence: float) -> None:
-        logger.warning(f"Lav confidence ({confidence}) for tekst: {text}, intent: {intent}")
-
-# Initialiser NLU
-nlu_classifier = SimulatedNLUClassifier()
-
 # WebSocket forbindelser
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
-        logger.info("Ny WebSocket forbindelse etableret")
+        logger.info("Ny bruger forbundet til chat")
 
-    async def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info("WebSocket forbindelse lukket")
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+        logger.info("Bruger afbrudt fra chat")
 
-    async def broadcast(self, message: Dict[str, Any]) -> None:
-        disconnected = []
+    async def broadcast(self, message: dict):
         for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-            except Exception as e:
-                logger.error(f"Fejl ved broadcast: {e}")
-                disconnected.append(connection)
-        
-        # Fjern døde forbindelser
-        for conn in disconnected:
-            await self.disconnect(conn)
+            await connection.send_json(message)
 
 manager = ConnectionManager()
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialiser LLM ved startup"""
+    logger.info("Starter Jarvis system...")
+    await llm_handler.initialize()
+    logger.info("Jarvis er klar til at chatte!")
+
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, background_tasks: BackgroundTasks):
+async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
+            # Modtag besked fra bruger
             data = await websocket.receive_text()
-            try:
-                message = json.loads(data)
-                
-                if message["type"] == "user_message":
-                    # Predict intent
-                    prediction_dict = await nlu_classifier.predict(message["content"])
-                    confidence = float(prediction_dict.get("confidence", 0.0))
-                    predicted_intent = prediction_dict.get("intent", "unknown")
-
-                    # Log lav confidence i baggrunden
-                    if confidence < NLU_CONFIDENCE_THRESHOLD:
-                        # Kør log_low_confidence direkte som async funktion
-                        background_tasks.add_task(
-                            nlu_classifier.log_low_confidence,
-                            message["content"],
-                            predicted_intent,
-                            confidence
-                        )
-
-                    # Send svar
-                    await manager.broadcast({
-                        "type": "message",
-                        "content": f"Forstået intent '{predicted_intent}' med {confidence:.2%} sikkerhed",
-                        "nlu_data": {
-                            "intent": predicted_intent,
-                            "confidence": confidence
-                        }
-                    })
-
-            except json.JSONDecodeError:
-                logger.error("Ugyldig JSON modtaget")
-                continue
-            except Exception as e:
-                logger.error(f"Fejl under message processing: {e}")
-                await websocket.send_json({
-                    "type": "error",
-                    "content": "Der skete en fejl under behandling af beskeden"
-                })
-
+            
+            # Send "skriver" status
+            await websocket.send_json({
+                "type": "status",
+                "content": "Jarvis tænker..."
+            })
+            
+            # Først tjek for simple intents via NLU
+            nlu_result = nlu_handler.classify_intent(data)
+            
+            if nlu_result["confidence"] >= 0.7:
+                # Brug NLU svar for simple intents
+                response_data = {
+                    "type": "message",
+                    "content": nlu_result["response"],
+                    "nlu_data": {
+                        "confidence": nlu_result["confidence"],
+                        "intent": nlu_result["intent"]
+                    }
+                }
+            else:
+                # Brug LLM for mere komplekse forespørgsler
+                llm_result = await llm_handler.generate_response(data)
+                response_data = {
+                    "type": "message",
+                    "content": llm_result["response"],
+                    "nlu_data": {
+                        "confidence": llm_result["confidence"],
+                        "model_name": llm_result["model_name"],
+                        "system_load": llm_result["system_load"]
+                    }
+                }
+            
+            # Send svar til bruger
+            await websocket.send_json(response_data)
+            
+            # Gem samtalen efter hver interaktion
+            llm_handler.save_conversation()
+            
     except WebSocketDisconnect:
-        await manager.disconnect(websocket)
+        manager.disconnect(websocket)
+        # Gem samtalen når brugeren afbryder
+        llm_handler.save_conversation()
     except Exception as e:
-        logger.error(f"Uventet fejl i websocket handler: {e}")
-        await manager.disconnect(websocket)
+        logger.error(f"Fejl i chat: {e}")
+        await websocket.send_json({
+            "type": "error",
+            "content": "Der opstod en fejl. Prøv venligst igen."
+        })
 
 @app.get("/")
 async def root(request):
@@ -141,6 +133,21 @@ async def visualization(request):
         "visualization.html",
         {"request": request}
     )
+
+@app.get("/status")
+async def get_status():
+    """Hent system status"""
+    llm_status = llm_handler.get_status()
+    return {
+        "llm_status": llm_status,
+        "is_ready": llm_status["is_initialized"]
+    }
+
+@app.post("/clear-conversation")
+async def clear_conversation():
+    """Ryd den nuværende samtale"""
+    llm_handler.clear_conversation()
+    return {"status": "success", "message": "Samtale ryddet"}
 
 if __name__ == "__main__":
     import uvicorn

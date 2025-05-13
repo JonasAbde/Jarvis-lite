@@ -1,6 +1,5 @@
 """
-NLU (Natural Language Understanding) modul for Jarvis-lite.
-Håndterer intent-genkendelse med konfidensbaseret tærskelværdi.
+NLU Module for Jarvis-Lite
 """
 
 from typing import Tuple, Dict, List, Any

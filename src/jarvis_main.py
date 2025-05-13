@@ -29,6 +29,8 @@ from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 import torch
 from llm.mcp_client import JarvisMCP  # MCP-integration
+from src.llm.handler import LLMHandler
+from utils.dependency_checker import check_dependencies, install_dependencies
 
 # Konfigurer logging
 logging.basicConfig(
@@ -215,15 +217,32 @@ JARVIS_TRAINING_DATA = {
     ]
 }
 
-# LLM konfiguration
-LLM_MODEL_NAME = "Maltehb/danish-bert-botxo"  # Velkendt dansk BERT model
-BEST_MODEL_FILENAME = "best_danish_model.pt" # Konstant for model filnavn
+# Model konfiguration
+MODEL_CONFIG = {
+    "name": "mistralai/Mistral-7B-v0.1",
+    "cache_dir": "models/cache",
+    "quantization": {
+        "load_in_4bit": True,
+        "bnb_4bit_compute_dtype": "float16",
+        "bnb_4bit_quant_type": "nf4",
+        "bnb_4bit_use_double_quant": True
+    },
+    "generation": {
+        "max_length": 200,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "top_k": 50,
+        "repetition_penalty": 1.2
+    }
+}
+
+# Fjern gammel LLM konfiguration og behold kun den nye
+LLM_MODEL_NAME = MODEL_CONFIG["name"]
+llm_handler = None
+
+# Fjern ubrugte variabler
 llm_model = None
 llm_tokenizer = None
-TRAINING_ITERATIONS = 6  # Optimeret for RTX 4070: balance mellem grundighed og tid
-BATCH_SIZE = 8          # Optimeret for 8GB VRAM
-LEARNING_RATE = 2e-5      # Standard finjusterings-learning rate
-GRADIENT_ACCUMULATION_STEPS = 4  # Effektiv batch size på 32
 
 # MCP-klient (globalt)
 mcp = JarvisMCP()
@@ -578,103 +597,74 @@ def load_llm_model():
                 torch.cuda.empty_cache()
                 logger.info("CUDA cache tømt.")
 
-def generate_response(user_input, conversation_history):
-    """Generer Jarvis-specifik respons ved hjælp af regelbaserede svar og BERT embeddings"""
+async def initialize_llm():
+    """Initialiser LLM med opdateret konfiguration"""
+    global llm_handler
     try:
-        model, tokenizer = load_llm_model()
-        if model is None or tokenizer is None:
-            return "Jeg har problemer med at tænke lige nu. Kan vi snakke om et øjeblik?"
-            
-        device = next(model.parameters()).device
-        inputs = tokenizer(user_input, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device) # max_length for BERT
-        with torch.no_grad():
-            user_embedding = model(**inputs).last_hidden_state.mean(dim=1)
+        # Opret cache directory
+        os.makedirs(MODEL_CONFIG["cache_dir"], exist_ok=True)
         
-        best_score = -float('inf')
-        best_response_candidate = None
-        best_match_source = "None"
-
-        # Tjek først samtaler
-        for conv in JARVIS_TRAINING_DATA.get("samtaler", []):
-            if not conv.get("user") or not conv.get("assistant"):
-                logger.warning(f"Skipping malformed conversation entry: {conv}")
-                continue
-            inputs_conv = tokenizer(conv["user"], return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
-            with torch.no_grad():
-                conv_embedding = model(**inputs_conv).last_hidden_state.mean(dim=1)
-            similarity = torch.nn.functional.cosine_similarity(user_embedding, conv_embedding)
-            score = similarity.item()
-            if score > best_score:
-                best_score = score
-                best_response_candidate = conv["assistant"]
-                best_match_source = f"Samtale: '{conv['user'][:30]}...'"
+        # Initialiser LLM handler med konfiguration
+        llm_handler = LLMHandler(
+            model_name=MODEL_CONFIG["name"],
+            cache_dir=MODEL_CONFIG["cache_dir"],
+            quantization_config=MODEL_CONFIG["quantization"]
+        )
         
-        # Tjek følelser
-        for pattern in JARVIS_TRAINING_DATA.get("følelser", []):
-            if not pattern.get("input") or not pattern.get("responses"):
-                logger.warning(f"Skipping malformed emotion pattern: {pattern}")
-                continue
-            inputs_pattern = tokenizer(f"jeg er {pattern['input']}", return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
-            with torch.no_grad():
-                pattern_embedding = model(**inputs_pattern).last_hidden_state.mean(dim=1)
-            similarity = torch.nn.functional.cosine_similarity(user_embedding, pattern_embedding)
-            score = similarity.item()
-            if score > best_score:
-                best_score = score
-                best_response_candidate = np.random.choice(pattern["responses"])
-                best_match_source = f"Følelse: '{pattern['input'][:30]}...'"
-        
-        # Log den fundne score og kilde, uanset om den bruges
-        logger.info(f"Bedste match score: {best_score:.4f} (Kilde: {best_match_source})")
-
-        # Justeret threshold og logik
-        match_threshold = 0.6 # Lavere threshold for at teste
-        if best_score > match_threshold and best_response_candidate:
-            logger.info(f"Bruger match fra træningsdata (score {best_score:.4f} >= {match_threshold})")
-            return best_response_candidate
-            
-        logger.info(f"Score {best_score:.4f} < {match_threshold} eller intet kandidatsvar. Bruger fallback.")
-        fallback_responses = [
-            "Det er jeg ikke helt sikker på, hvordan jeg skal svare. Kan du prøve at omformulere det?",
-            "Jeg lærer stadig nye ting. Kan du forklare det på en anden måde?",
-            "Hmm, den fangede jeg ikke helt. Hvad mener du mere præcist?",
-            "Det lyder interessant. Fortæl mig eventuelt lidt mere, så jeg bedre kan forstå.",
-            "Jeg er ikke helt med. Kan du prøve at stille spørgsmålet anderledes?"
-        ]
-        return np.random.choice(fallback_responses)
+        # Initialiser modellen
+        await llm_handler.initialize()
+        logger.info("LLM model initialiseret succesfuldt")
+        return True
         
     except Exception as e:
-        logger.error(f"Fejl ved generering af Jarvis respons: {e}")
-        logger.error(traceback.format_exc()) # Log fuld traceback
-        return "Jeg har desværre lidt tekniske problemer med at svare lige nu. Prøv venligst igen om et øjeblik."
+        logger.error(f"Fejl ved initialisering af LLM: {e}")
+        return False
 
-def handle_command(command):
+async def generate_response(user_input: str, conversation_history: list) -> str:
+    """Generer respons ved hjælp af LLM"""
+    try:
+        if llm_handler and llm_handler.is_initialized:
+            result = await llm_handler.generate_response(user_input)
+            return result["response"]
+        else:
+            logger.warning("LLM ikke initialiseret, bruger fallback respons")
+            return "Beklager, jeg har problemer med at tænke klart lige nu. Prøv igen om lidt."
+    except Exception as e:
+        logger.error(f"Fejl ved generering af respons: {e}")
+        return "Beklager, jeg havde problemer med at generere et svar. Prøv igen."
+
+# Opdater handle_command til at være asynkron
+async def handle_command(command: str) -> str:
     """Intelligent samtale håndtering med LLM og MCP"""
     if not command or command.isspace():
         return "Jeg kunne ikke forstå, hvad du sagde. Kan du prøve igen?"
-    command = command.strip().lower()
+    
+    try:
+        command = command.strip().lower()
 
-    # 1) Push input + historik til MCP
-    mcp.push_context({
-        "user_input": command,
-        "history": CONVERSATION_HISTORY
-    })
-    # 2) Hent beriget kontekst fra MCP
-    ctx = mcp.get_context()
-    # 3) Generér svar med LLM
-    llm_response = generate_response(command, CONVERSATION_HISTORY)
-    # 4) Tool-call via MCP hvis intent
-    # (Her antages at llm_response er dict med intent/url, ellers tilpas)
-    if isinstance(llm_response, dict) and llm_response.get("intent") == "open_url":
-        mcp.invoke_tool("open_url", {"url": llm_response.get("url")})
-    # 5) Gem nyt svar i historik og returnér
-    CONVERSATION_HISTORY.append({"user": command, "assistant": llm_response})
-    learn_from_conversation(command, llm_response)
-    save_conversation(command, llm_response)
-    return llm_response
+        # Push input + historik til MCP
+        mcp.push_context({
+            "user_input": command,
+            "history": CONVERSATION_HISTORY
+        })
+        
+        # Hent beriget kontekst fra MCP
+        ctx = mcp.get_context()
+        
+        # Generér svar med LLM
+        response = await generate_response(command, CONVERSATION_HISTORY)
+        
+        # Gem nyt svar i historik
+        save_conversation(command, response)
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Fejl i handle_command: {e}")
+        return "Beklager, jeg havde problemer med at behandle din besked. Prøv igen."
 
 async def continuous_listening():
-    """Forenklet kontinuerlig lytning"""
+    """Forenklet kontinuerlig lytning med bedre fejlhåndtering"""
     global ERROR_COUNT
     
     logger.info("Jarvis er klar til at lytte...")
@@ -684,28 +674,60 @@ async def continuous_listening():
     
     while True:
         try:
+            # Tjek LLM status
+            if not llm_handler or not llm_handler.is_initialized:
+                logger.warning("LLM ikke initialiseret, prøver at initialisere igen...")
+                if not await initialize_llm():
+                    logger.error("Kunne ikke initialisere LLM. Venter 30 sekunder...")
+                    await asyncio.sleep(30)
+                    continue
+
+            # Optag lyd
             audio_file_path = await record_audio_async()
-            if audio_file_path:
-                user_input = await transcribe_audio_async(audio_file_path)
-                if user_input: 
-                    logger.info(f"Bruger: {user_input}")
-                    response = handle_command(user_input)
-                    if response:
-                        await speak_async(response)
+            if not audio_file_path:
+                continue
+
+            # Transskriber lyd
+            user_input = await transcribe_audio_async(audio_file_path)
+            if not user_input:
+                continue
+
+            # Log og håndter input
+            logger.info(f"Bruger: {user_input}")
+            response = await handle_command(user_input)
+            
+            # Generer svar
+            if response:
+                await speak_async(response)
+                
+            # Reset error counter ved succes
             if time.time() - last_error_time > ERROR_RESET_TIME:
                 ERROR_COUNT = 0
+                
             await asyncio.sleep(0.1)
+            
+        except asyncio.CancelledError:
+            logger.info("Continuous listening afbrudt (CancelledError)")
+            break
         except KeyboardInterrupt:
-            logger.info("Continuous listening afbrudt af bruger (KeyboardInterrupt).")
+            logger.info("Continuous listening afbrudt af bruger")
             break
         except Exception as e:
             ERROR_COUNT += 1
+            last_error_time = time.time()
+            
             logger.error(f"Fejl i continuous_listening loop: {e}")
             logger.error(traceback.format_exc())
+            
             if ERROR_COUNT >= MAX_ERRORS:
-                logger.error("For mange fejl i continuous_listening. Genstarter Jarvis funktioner...")
-                await speak_async("Jeg oplever nogle tekniske problemer og prøver at genstarte mine lyttefunktioner.")
+                logger.error("For mange fejl i continuous_listening. Genstarter...")
+                await speak_async("Jeg oplever tekniske problemer. Genstarter mine systemer.")
                 ERROR_COUNT = 0
+                
+                # Prøv at genstarte LLM
+                if not await initialize_llm():
+                    logger.error("Kunne ikke genstarte LLM")
+                
             await asyncio.sleep(1)
 
 def cleanup_resources():
@@ -729,47 +751,51 @@ def cleanup_resources():
         except:
             pass
 
-def main():
-    """Optimeret hovedprogram med LLM"""
+async def main():
+    """Hovedfunktion med bedre fejlhåndtering og dependency check"""
     try:
+        # Tjek dependencies
+        deps_ok, missing = check_dependencies()
+        
+        if not deps_ok:
+            logger.warning("Manglende eller forældede dependencies fundet")
+            if input("Vil du installere/opdatere de nødvendige pakker? (j/n): ").lower().startswith('j'):
+                if not install_dependencies(missing):
+                    logger.error("Kunne ikke installere dependencies. Afslutter...")
+                    return
+            else:
+                logger.error("Dependencies ikke komplette. Afslutter...")
+                return
+        
         # Opret nødvendige mapper
         os.makedirs("data", exist_ok=True)
         os.makedirs(TTS_CACHE_DIR, exist_ok=True)
         
-        # Indlæs samtalehistorik og træningsdata
+        # Indlæs samtalehistorik
         load_conversation_history()
-        load_training_data()
         
-        # Indlæs LLM model
-        load_llm_model()
-        
-        # Ryd op
-        cleanup_resources()
-        
-        logger.info("=== Jarvis Lite er klar! ===")
-        
-        # Registrer signal handlers
-        def signal_handler(signum, frame):
-            logger.info("Modtog afslutningssignal")
-            cleanup_resources()
-            sys.exit(0)
-            
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-        
-        # Kør hovedprogram
-        asyncio.run(continuous_listening())
-        
+        # Initialiser LLM
+        if not await initialize_llm():
+            logger.error("Kunne ikke initialisere LLM. Afslutter...")
+            return
+
+        # Start continuous listening
+        await continuous_listening()
+
     except KeyboardInterrupt:
-        logger.info("Afslutter...")
+        logger.info("Program afbrudt af bruger")
     except Exception as e:
-        logger.error(f"Kritisk fejl: {e}")
+        logger.error(f"Uventet fejl i hovedtråd: {e}")
+        logger.error(traceback.format_exc())
     finally:
         cleanup_resources()
-        logger.info("Jarvis Lite er lukket ned.")
-        
-        # Luk thread pool
-        executor.shutdown(wait=False)
 
 if __name__ == "__main__":
-    main()
+    try:
+        # Kør hovedprogrammet asynkront
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Program afbrudt af bruger")
+    except Exception as e:
+        logger.error(f"Kritisk fejl i hovedprogram: {e}")
+        logger.error(traceback.format_exc())
