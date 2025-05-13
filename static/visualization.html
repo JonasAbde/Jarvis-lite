@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis - Visualisering</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/main.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="/static/img/jarvis-logo.png" alt="Jarvis Logo" class="logo">
+            <h1>Jarvis</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/">Hjem</a></li>
+                <li><a href="/web/chat">Chat</a></li>
+                <li><a href="/web/training">Træning</a></li>
+                <li class="active"><a href="/web/visualization">Visualisering</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="visualization-intro">
+            <h2>Jarvis Visualisering</h2>
+            <p>Her kan du få indsigt i Jarvis' ydeevne og brugeraktivitet gennem interaktive visualiseringer af data.</p>
+            
+            <div class="time-range-selector">
+                <button data-range="day" class="time-button active">Dag</button>
+                <button data-range="week" class="time-button">Uge</button>
+                <button data-range="month" class="time-button">Måned</button>
+                <button data-range="year" class="time-button">År</button>
+            </div>
+        </section>
+
+        <div class="charts-container">
+            <section class="chart-panel">
+                <h3>Brugerinteraktioner</h3>
+                <div class="chart-container">
+                    <canvas id="interactions-chart"></canvas>
+                </div>
+                <div class="chart-info">
+                    <div class="stat-box">
+                        <span class="stat-label">Total i perioden</span>
+                        <span id="total-interactions" class="stat-value">342</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Gns. pr. dag</span>
+                        <span id="avg-interactions" class="stat-value">48.9</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Ændring</span>
+                        <span id="change-interactions" class="stat-value increase">+12.4%</span>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="chart-panel">
+                <h3>Intent Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="intent-chart"></canvas>
+                </div>
+                <div class="chart-info">
+                    <div class="stat-box">
+                        <span class="stat-label">Mest almindelig</span>
+                        <span id="top-intent" class="stat-value">greeting</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Stigende</span>
+                        <span id="trending-intent" class="stat-value">weather</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Intent dækning</span>
+                        <span id="intent-coverage" class="stat-value">87%</span>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="chart-panel full-width">
+                <h3>NLU Performance</h3>
+                <div class="chart-container">
+                    <canvas id="nlu-chart"></canvas>
+                </div>
+                <div class="chart-info multi-row">
+                    <div class="stat-box">
+                        <span class="stat-label">Gns. confidence</span>
+                        <span id="avg-confidence" class="stat-value">78.3%</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Lav confidence rate</span>
+                        <span id="low-confidence-rate" class="stat-value">12.7%</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Forkert intent rate</span>
+                        <span id="error-rate" class="stat-value">8.2%</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Sidst trænet</span>
+                        <span id="last-trained" class="stat-value">I går, 14:32</span>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="chart-panel">
+                <h3>Stemmeaktivering vs. Tekst</h3>
+                <div class="chart-container">
+                    <canvas id="input-type-chart"></canvas>
+                </div>
+                <div class="chart-info">
+                    <div class="stat-box">
+                        <span class="stat-label">Stemmeaktivering</span>
+                        <span id="voice-percentage" class="stat-value">64%</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Tekstindtastning</span>
+                        <span id="text-percentage" class="stat-value">36%</span>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="chart-panel">
+                <h3>Brugstid fordeling</h3>
+                <div class="chart-container">
+                    <canvas id="usage-time-chart"></canvas>
+                </div>
+                <div class="chart-info">
+                    <div class="stat-box">
+                        <span class="stat-label">Spidsbelastning</span>
+                        <span id="peak-time" class="stat-value">19:00-20:00</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Inaktiv periode</span>
+                        <span id="inactive-time" class="stat-value">03:00-06:00</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+        
+        <section class="data-export">
+            <h3>Data Eksport</h3>
+            <p>Download data for yderligere analyse i andre værktøjer.</p>
+            <div class="export-buttons">
+                <button id="export-csv" class="export-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    CSV
+                </button>
+                <button id="export-json" class="export-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    JSON
+                </button>
+                <button id="export-pdf" class="export-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    PDF
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Jarvis &copy; 2023 - Modulær dansk stemmeassistent</p>
+    </footer>
+
+    <script>
+        // Variable til at gemme alle charts for nem opdatering
+        const charts = {};
+        
+        // Aktuel tidsperiode
+        let currentTimeRange = 'day';
+        
+        // Farvepalette
+        const colors = {
+            blue: 'rgba(52, 152, 219, 0.8)',
+            green: 'rgba(46, 204, 113, 0.8)',
+            orange: 'rgba(243, 156, 18, 0.8)',
+            red: 'rgba(231, 76, 60, 0.8)',
+            purple: 'rgba(155, 89, 182, 0.8)',
+            darkBlue: 'rgba(41, 128, 185, 0.8)',
+            yellow: 'rgba(241, 196, 15, 0.8)',
+            teal: 'rgba(26, 188, 156, 0.8)'
+        };
+        
+        // Chart.js standard konfiguration
+        Chart.defaults.font.family = "'Segoe UI', 'Roboto', Arial, sans-serif";
+        Chart.defaults.color = '#2c3e50';
+        Chart.defaults.plugins.legend.position = 'bottom';
+        
+        // Funktion til at generere tidsperiode labels
+        function generateTimeLabels(timeRange) {
+            const labels = [];
+            
+            switch (timeRange) {
+                case 'day':
+                    // Timers intervaller for en dag
+                    for (let i = 0; i < 24; i++) {
+                        labels.push(`${i}:00`);
+                    }
+                    break;
+                    
+                case 'week':
+                    // Dage i ugen
+                    labels.push('Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag');
+                    break;
+                    
+                case 'month':
+                    // 30 dage
+                    for (let i = 1; i <= 30; i++) {
+                        labels.push(`Dag ${i}`);
+                    }
+                    break;
+                    
+                case 'year':
+                    // Måneder
+                    labels.push('Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec');
+                    break;
+            }
+            
+            return labels;
+        }
+        
+        // Funktion til at simulere tilfældige data
+        function generateRandomData(count, min, max) {
+            return Array.from({ length: count }, () => 
+                Math.floor(Math.random() * (max - min + 1)) + min
+            );
+        }
+        
+        // Funktion til at opdatere alle grafer baseret på tidsperiode
+        function updateCharts(timeRange) {
+            const labels = generateTimeLabels(timeRange);
+            
+            // Opdater brugerinteraktioner diagram
+            updateInteractionsChart(labels);
+            
+            // Opdater intentfordelingsdiagram
+            updateIntentChart();
+            
+            // Opdater NLU performance diagram
+            updateNluChart(labels);
+            
+            // Opdater inputtype diagram
+            updateInputTypeChart();
+            
+            // Opdater brugstidsfordeling
+            updateUsageTimeChart(timeRange === 'day' ? 24 : (timeRange === 'week' ? 7 : 
+                                 timeRange === 'month' ? 30 : 12));
+            
+            // Opdater statistikker
+            updateStatistics(timeRange);
+        }
+        
+        // -- Individuelle chart opdateringsfunktioner --
+        
+        function updateInteractionsChart(labels) {
+            const data = {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Tekstinteraktioner',
+                        data: generateRandomData(labels.length, 5, 30),
+                        backgroundColor: colors.blue,
+                        borderColor: colors.blue,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Stemmeinteraktioner',
+                        data: generateRandomData(labels.length, 10, 50),
+                        backgroundColor: colors.green,
+                        borderColor: colors.green,
+                        borderWidth: 1
+                    }
+                ]
+            };
+            
+            if (charts.interactions) {
+                charts.interactions.data = data;
+                charts.interactions.update();
+            } else {
+                const ctx = document.getElementById('interactions-chart').getContext('2d');
+                charts.interactions = new Chart(ctx, {
+                    type: 'bar',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                stacked: true
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        function updateIntentChart() {
+            const intents = ['greeting', 'weather', 'time', 'date', 'play_music', 'stop_music', 'general_question'];
+            const data = {
+                labels: intents,
+                datasets: [
+                    {
+                        data: generateRandomData(intents.length, 5, 50),
+                        backgroundColor: [
+                            colors.blue, colors.green, colors.orange, colors.red,
+                            colors.purple, colors.darkBlue, colors.yellow
+                        ]
+                    }
+                ]
+            };
+            
+            if (charts.intent) {
+                charts.intent.data = data;
+                charts.intent.update();
+            } else {
+                const ctx = document.getElementById('intent-chart').getContext('2d');
+                charts.intent = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                align: 'start'
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        function updateNluChart(labels) {
+            const data = {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Gennemsnitlig Confidence',
+                        data: generateRandomData(labels.length, 60, 95).map(val => val / 100),
+                        fill: false,
+                        borderColor: colors.blue,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Fejlrate',
+                        data: generateRandomData(labels.length, 2, 20).map(val => val / 100),
+                        fill: false,
+                        borderColor: colors.red,
+                        tension: 0.1
+                    }
+                ]
+            };
+            
+            if (charts.nlu) {
+                charts.nlu.data = data;
+                charts.nlu.update();
+            } else {
+                const ctx = document.getElementById('nlu-chart').getContext('2d');
+                charts.nlu = new Chart(ctx, {
+                    type: 'line',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                min: 0,
+                                max: 1,
+                                ticks: {
+                                    callback: value => `${Math.round(value * 100)}%`
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        function updateInputTypeChart() {
+            const voicePercentage = Math.floor(Math.random() * 31) + 50; // 50-80%
+            const textPercentage = 100 - voicePercentage;
+            
+            const data = {
+                labels: ['Stemmeaktivering', 'Tekstindtastning'],
+                datasets: [
+                    {
+                        data: [voicePercentage, textPercentage],
+                        backgroundColor: [colors.green, colors.blue]
+                    }
+                ]
+            };
+            
+            if (charts.inputType) {
+                charts.inputType.data = data;
+                charts.inputType.update();
+            } else {
+                const ctx = document.getElementById('input-type-chart').getContext('2d');
+                charts.inputType = new Chart(ctx, {
+                    type: 'pie',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+            
+            // Opdater statistik
+            document.getElementById('voice-percentage').textContent = `${voicePercentage}%`;
+            document.getElementById('text-percentage').textContent = `${textPercentage}%`;
+        }
+        
+        function updateUsageTimeChart(segments) {
+            let labels = [];
+            
+            if (segments === 24) {
+                // Timer på dagen
+                for (let i = 0; i < 24; i++) {
+                    labels.push(`${i}:00`);
+                }
+            } else if (segments === 7) {
+                // Ugedage
+                labels = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
+            } else if (segments === 12) {
+                // Måneder
+                labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'];
+            } else {
+                // Dage i måned
+                for (let i = 1; i <= 30; i++) {
+                    labels.push(`${i}`);
+                }
+            }
+            
+            const data = {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Brugeraktivitet',
+                        data: generateRandomData(segments, 0, 100),
+                        backgroundColor: colors.purple,
+                        borderColor: colors.purple,
+                        fill: true
+                    }
+                ]
+            };
+            
+            if (charts.usageTime) {
+                charts.usageTime.data = data;
+                charts.usageTime.update();
+            } else {
+                const ctx = document.getElementById('usage-time-chart').getContext('2d');
+                charts.usageTime = new Chart(ctx, {
+                    type: 'line',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        elements: {
+                            line: {
+                                tension: 0.4
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Opdater statistikker baseret på tidsperiode
+        function updateStatistics(timeRange) {
+            // Total interaktioner
+            let totalInteractions;
+            switch (timeRange) {
+                case 'day': totalInteractions = 342; break;
+                case 'week': totalInteractions = 1924; break;
+                case 'month': totalInteractions = 7453; break;
+                case 'year': totalInteractions = 87241; break;
+            }
+            document.getElementById('total-interactions').textContent = totalInteractions.toLocaleString();
+            
+            // Gennemsnitlige daglige interaktioner
+            let avgInteractions;
+            switch (timeRange) {
+                case 'day': avgInteractions = 48.9; break;
+                case 'week': avgInteractions = 44.7; break;
+                case 'month': avgInteractions = 41.2; break;
+                case 'year': avgInteractions = 38.5; break;
+            }
+            document.getElementById('avg-interactions').textContent = avgInteractions.toFixed(1);
+            
+            // Procentvis ændring
+            let changeInteractions;
+            switch (timeRange) {
+                case 'day': changeInteractions = 12.4; break;
+                case 'week': changeInteractions = 8.7; break;
+                case 'month': changeInteractions = -3.2; break;
+                case 'year': changeInteractions = 15.3; break;
+            }
+            
+            const changeEl = document.getElementById('change-interactions');
+            changeEl.textContent = `${changeInteractions >= 0 ? '+' : ''}${changeInteractions.toFixed(1)}%`;
+            changeEl.className = `stat-value ${changeInteractions >= 0 ? 'increase' : 'decrease'}`;
+            
+            // NLU stats
+            const avgConfidence = Math.floor(Math.random() * 11) + 70; // 70-80%
+            document.getElementById('avg-confidence').textContent = `${avgConfidence}%`;
+            
+            const lowConfidenceRate = Math.floor(Math.random() * 6) + 10; // 10-15%
+            document.getElementById('low-confidence-rate').textContent = `${lowConfidenceRate}%`;
+            
+            const errorRate = Math.floor(Math.random() * 5) + 5; // 5-9%
+            document.getElementById('error-rate').textContent = `${errorRate}%`;
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialisér grafer med daglig visning som standard
+            updateCharts('day');
+            
+            // Tilføj event listeners til tidsperiode knapper
+            document.querySelectorAll('.time-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    // Opdater aktiv knap
+                    document.querySelector('.time-button.active').classList.remove('active');
+                    button.classList.add('active');
+                    
+                    // Opdater grafer
+                    const timeRange = button.dataset.range;
+                    currentTimeRange = timeRange;
+                    updateCharts(timeRange);
+                });
+            });
+            
+            // Export knapper
+            document.getElementById('export-csv').addEventListener('click', () => {
+                // Dette ville normalt håndtere CSV download
+                alert('CSV eksport simuleret - ville normalt downloade data.');
+            });
+            
+            document.getElementById('export-json').addEventListener('click', () => {
+                // Dette ville normalt håndtere JSON download
+                alert('JSON eksport simuleret - ville normalt downloade data.');
+            });
+            
+            document.getElementById('export-pdf').addEventListener('click', () => {
+                // Dette ville normalt håndtere PDF generering
+                alert('PDF eksport simuleret - ville normalt generere en rapport.');
+            });
+        });
+        
+        // Handle WebSocket status update override
+        window.updateStatus = function(status) {
+            // Denne side behøver ikke at reagere på WebSocket status opdateringer
+            console.log('WebSocket status modtaget:', status);
+        };
+    </script>
+    
+    <style>
+        /* Visualiserings-specifikke styles */
+        .visualization-intro {
+            margin-bottom: 1.5rem;
+        }
+        
+        .time-range-selector {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .time-button {
+            padding: 0.5rem 1.5rem;
+            background-color: var(--background);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .time-button.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .time-button:hover:not(.active) {
+            background-color: #f0f0f0;
+        }
+        
+        /* Chart container grid */
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .chart-panel {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .chart-container {
+            height: 300px;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        
+        /* Statistik visninger */
+        .chart-info {
+            display: flex;
+            justify-content: space-around;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1rem;
+        }
+        
+        .multi-row {
+            flex-wrap: wrap;
+            row-gap: 1rem;
+        }
+        
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .increase {
+            color: #2ecc71;
+        }
+        
+        .decrease {
+            color: #e74c3c;
+        }
+        
+        /* Data eksport sektion */
+        .data-export {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        
+        .export-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .export-button {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.7rem 1.2rem;
+            background-color: var(--background);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .export-button:hover {
+            background-color: #f0f0f0;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .full-width {
+                grid-column: auto;
+            }
+            
+            .chart-info {
+                flex-wrap: wrap;
+                row-gap: 1rem;
+            }
+            
+            .stat-box {
+                width: 50%;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .time-range-selector {
+                overflow-x: auto;
+                width: 100%;
+            }
+            
+            .time-button {
+                flex: 1;
+                min-width: 80px;
+                text-align: center;
+            }
+            
+            .export-buttons {
+                flex-wrap: wrap;
+            }
+            
+            .export-button {
+                flex: 1;
+                justify-content: center;
+                min-width: 120px;
+            }
+        }
+    </style>
+</body>
+</html> 

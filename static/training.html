@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis - Træning</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/main.js" defer></script>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="/static/img/jarvis-logo.png" alt="Jarvis Logo" class="logo">
+            <h1>Jarvis</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/">Hjem</a></li>
+                <li><a href="/web/chat">Chat</a></li>
+                <li class="active"><a href="/web/training">Træning</a></li>
+                <li><a href="/web/visualization">Visualisering</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="training-intro">
+            <h2>Træning af Jarvis</h2>
+            <p>Her kan du hjælpe med at træne Jarvis til at blive bedre til at forstå dine henvendelser. Du kan både tilføje nye træningseksempler og se eksisterende træningsdata.</p>
+        </section>
+
+        <div class="training-container">
+            <section class="training-panel">
+                <h3>Tilføj Træningseksempel</h3>
+                <div class="training-form">
+                    <div class="form-group">
+                        <label for="training-text">Tekst:</label>
+                        <textarea id="training-text" rows="3" placeholder="Skriv et eksempel på en sætning..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="intent-select">Intent:</label>
+                        <select id="intent-select">
+                            <option value="">Vælg intent...</option>
+                            <!-- Intents vil blive indlæst dynamisk -->
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button id="add-intent" class="secondary-button">Tilføj ny intent</button>
+                        <button id="submit-training" class="primary-button">Gem eksempel</button>
+                    </div>
+                </div>
+
+                <div id="training-status" class="training-status">
+                    <div class="progress-container">
+                        <label>Træningsstatus:</label>
+                        <div class="progress-bar">
+                            <div id="training-progress" class="progress-bar-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span id="examples-count">0</span> nye eksempler / 
+                            <span id="examples-needed">5</span> nødvendige for gentræning
+                        </div>
+                    </div>
+                    <button id="force-retrain" class="secondary-button">Tving gentræning nu</button>
+                </div>
+            </section>
+            
+            <section class="data-panel">
+                <h3>Træningsdata</h3>
+                <div class="filter-controls">
+                    <select id="filter-intent">
+                        <option value="">Alle intents</option>
+                        <!-- Intents vil blive indlæst dynamisk -->
+                    </select>
+                    <input type="text" id="search-data" placeholder="Søg i træningsdata...">
+                </div>
+                
+                <div class="training-data-container">
+                    <table id="training-data-table" class="training-data-table">
+                        <thead>
+                            <tr>
+                                <th>Tekst</th>
+                                <th>Intent</th>
+                                <th>Confidence</th>
+                                <th>Handlinger</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Træningsdata vil blive indlæst dynamisk -->
+                            <tr class="loading-row">
+                                <td colspan="4">
+                                    <div class="loader"></div>
+                                    <span>Indlæser træningsdata...</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="pagination">
+                    <button id="prev-page" class="page-button" disabled>&lt; Forrige</button>
+                    <span id="page-info">Side 1 af 1</span>
+                    <button id="next-page" class="page-button" disabled>Næste &gt;</button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <p>Jarvis &copy; 2023 - Modulær dansk stemmeassistent</p>
+    </footer>
+
+    <!-- Dialog til tilføjelse af ny intent -->
+    <div id="add-intent-dialog" class="dialog">
+        <div class="dialog-content">
+            <div class="dialog-header">
+                <h3>Tilføj Ny Intent</h3>
+                <button class="close-button">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <div class="form-group">
+                    <label for="new-intent-name">Intent navn:</label>
+                    <input type="text" id="new-intent-name" placeholder="f.eks. greeting, weather_query, play_music">
+                </div>
+                <div class="form-group">
+                    <label for="new-intent-description">Beskrivelse:</label>
+                    <textarea id="new-intent-description" rows="3" placeholder="Beskriv hvad denne intent skal bruges til..."></textarea>
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button id="cancel-intent" class="secondary-button">Annuller</button>
+                <button id="save-intent" class="primary-button">Gem Intent</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM referencer
+        const intentSelect = document.getElementById('intent-select');
+        const filterIntentSelect = document.getElementById('filter-intent');
+        const trainingTextArea = document.getElementById('training-text');
+        const submitTrainingButton = document.getElementById('submit-training');
+        const addIntentButton = document.getElementById('add-intent');
+        const forceRetrainButton = document.getElementById('force-retrain');
+        const trainingProgressBar = document.getElementById('training-progress');
+        const examplesCountSpan = document.getElementById('examples-count');
+        const examplesNeededSpan = document.getElementById('examples-needed');
+        const trainingDataTable = document.getElementById('training-data-table').querySelector('tbody');
+        const searchDataInput = document.getElementById('search-data');
+        const prevPageButton = document.getElementById('prev-page');
+        const nextPageButton = document.getElementById('next-page');
+        const pageInfoSpan = document.getElementById('page-info');
+        
+        // Dialog elementer
+        const addIntentDialog = document.getElementById('add-intent-dialog');
+        const newIntentNameInput = document.getElementById('new-intent-name');
+        const newIntentDescriptionInput = document.getElementById('new-intent-description');
+        const saveIntentButton = document.getElementById('save-intent');
+        const cancelIntentButton = document.getElementById('cancel-intent');
+        const closeDialogButton = document.querySelector('.close-button');
+        
+        // Paginerings-variabler
+        let currentPage = 1;
+        let totalPages = 1;
+        let itemsPerPage = 10;
+        let trainingData = [];
+        let filteredData = [];
+        
+        // Intent listen
+        let availableIntents = [];
+        
+        // Ladende tekst
+        const loadingHtml = `
+            <tr class="loading-row">
+                <td colspan="4">
+                    <div class="loader"></div>
+                    <span>Indlæser træningsdata...</span>
+                </td>
+            </tr>
+        `;
+        
+        // Fejl tekst
+        const errorHtml = `
+            <tr class="error-row">
+                <td colspan="4">
+                    <div class="error-message">
+                        Kunne ikke indlæse træningsdata. Prøv at genindlæse siden.
+                    </div>
+                </td>
+            </tr>
+        `;
+        
+        // Ingen data tekst
+        const noDataHtml = `
+            <tr class="no-data-row">
+                <td colspan="4">
+                    <div class="no-data-message">
+                        Ingen træningsdata fundet. Tilføj nyt eksempel ovenfor.
+                    </div>
+                </td>
+            </tr>
+        `;
+        
+        // Hent tilgængelige intents
+        async function loadIntents() {
+            try {
+                const response = await fetch('/api/nlu/intents');
+                const data = await response.json();
+                
+                availableIntents = data.intents || [];
+                
+                // Opdater select elementerne
+                populateIntentSelect(intentSelect);
+                populateIntentSelect(filterIntentSelect, true);
+                
+                return true;
+            } catch (error) {
+                console.error('Fejl ved hentning af intents:', error);
+                return false;
+            }
+        }
+        
+        // Hent træningsstatus
+        async function loadTrainingStatus() {
+            try {
+                const response = await fetch('/training/status');
+                const data = await response.json();
+                
+                // Opdater UI med status
+                const newExamples = data.new_examples || 0;
+                const examplesUntilRetrain = data.examples_until_retrain || 5;
+                const totalNeeded = newExamples + examplesUntilRetrain;
+                
+                // Beregn procentdel
+                const percentage = Math.min(100, (newExamples / totalNeeded) * 100);
+                
+                trainingProgressBar.style.width = `${percentage}%`;
+                examplesCountSpan.textContent = newExamples;
+                examplesNeededSpan.textContent = totalNeeded;
+                
+                // Tilføj intents hvis de ikke allerede er indlæst
+                if (data.available_intents && data.available_intents.length > 0) {
+                    availableIntents = data.available_intents;
+                    populateIntentSelect(intentSelect);
+                    populateIntentSelect(filterIntentSelect, true);
+                }
+                
+                return true;
+            } catch (error) {
+                console.error('Fejl ved hentning af træningsstatus:', error);
+                return false;
+            }
+        }
+        
+        // Hent træningsdata
+        async function loadTrainingData() {
+            trainingDataTable.innerHTML = loadingHtml;
+            
+            try {
+                // Dette ville normalt være et API-kald til /api/nlu/training_data
+                // Men for nu simulerer vi nogle data
+                await new Promise(resolve => setTimeout(resolve, 800)); // Simuler netværksforsinkelse
+                
+                // Simulerede træningsdata
+                trainingData = [
+                    { text: "Hej Jarvis", intent: "greeting", confidence: 0.95 },
+                    { text: "Goddag", intent: "greeting", confidence: 0.92 },
+                    { text: "Hvordan går det?", intent: "greeting", confidence: 0.88 },
+                    { text: "Hvad er klokken?", intent: "time", confidence: 0.96 },
+                    { text: "Hvad tid er det?", intent: "time", confidence: 0.94 },
+                    { text: "Hvordan bliver vejret i morgen?", intent: "weather", confidence: 0.89 },
+                    { text: "Vil det regne i dag?", intent: "weather", confidence: 0.85 },
+                    { text: "Afspil noget musik", intent: "play_music", confidence: 0.91 },
+                    { text: "Start noget musik", intent: "play_music", confidence: 0.87 },
+                    { text: "Sluk musikken", intent: "stop_music", confidence: 0.93 },
+                    { text: "Stop med at afspille", intent: "stop_music", confidence: 0.9 },
+                    { text: "Hvad er datoen i dag?", intent: "date", confidence: 0.95 },
+                    { text: "Hvilken dag er det?", intent: "date", confidence: 0.92 },
+                    { text: "Sæt en påmindelse til senere", intent: "set_reminder", confidence: 0.88 },
+                    { text: "Påmind mig om at købe mælk", intent: "set_reminder", confidence: 0.91 }
+                ];
+                
+                // Filtrer og vis data
+                filterAndDisplayData();
+                
+                return true;
+            } catch (error) {
+                console.error('Fejl ved hentning af træningsdata:', error);
+                trainingDataTable.innerHTML = errorHtml;
+                return false;
+            }
+        }
+        
+        // Opdater select elementerne med intents
+        function populateIntentSelect(selectElement, includeAll = false) {
+            // Gem den nuværende værdi
+            const currentValue = selectElement.value;
+            
+            // Tøm selecten
+            selectElement.innerHTML = '';
+            
+            // Tilføj "alle intents" option hvis nødvendigt
+            if (includeAll) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Alle intents';
+                selectElement.appendChild(option);
+            } else {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Vælg intent...';
+                selectElement.appendChild(option);
+            }
+            
+            // Tilføj hver intent
+            availableIntents.forEach(intent => {
+                const option = document.createElement('option');
+                option.value = intent;
+                option.textContent = intent;
+                selectElement.appendChild(option);
+            });
+            
+            // Gendan værdien hvis muligt
+            if (currentValue && availableIntents.includes(currentValue)) {
+                selectElement.value = currentValue;
+            }
+        }
+        
+        // Filtrer og vis data baseret på søgning og filtrering
+        function filterAndDisplayData() {
+            const searchTerm = searchDataInput.value.toLowerCase();
+            const filterIntent = filterIntentSelect.value;
+            
+            // Filtrer data
+            filteredData = trainingData.filter(item => {
+                const textMatch = item.text.toLowerCase().includes(searchTerm);
+                const intentMatch = filterIntent ? item.intent === filterIntent : true;
+                return textMatch && intentMatch;
+            });
+            
+            // Opdater paginering
+            totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
+            currentPage = Math.min(currentPage, totalPages);
+            updatePaginationControls();
+            
+            // Vis data for den aktuelle side
+            displayPageData();
+        }
+        
+        // Vis data for den aktuelle side
+        function displayPageData() {
+            if (filteredData.length === 0) {
+                trainingDataTable.innerHTML = noDataHtml;
+                return;
+            }
+            
+            // Beregn start og slut indeks
+            const startIdx = (currentPage - 1) * itemsPerPage;
+            const endIdx = Math.min(startIdx + itemsPerPage, filteredData.length);
+            const pageData = filteredData.slice(startIdx, endIdx);
+            
+            // Opbyg tabelindhold
+            let tableHtml = '';
+            pageData.forEach(item => {
+                const confidencePercentage = Math.round(item.confidence * 100);
+                const confidenceClass = confidencePercentage >= 90 ? 'high-confidence' : 
+                                      confidencePercentage >= 70 ? 'medium-confidence' : 'low-confidence';
+                
+                tableHtml += `
+                <tr>
+                    <td>${item.text}</td>
+                    <td>${item.intent}</td>
+                    <td>
+                        <div class="confidence-bar ${confidenceClass}" 
+                             style="width: ${confidencePercentage}%">
+                            ${confidencePercentage}%
+                        </div>
+                    </td>
+                    <td>
+                        <button class="edit-button" data-index="${filteredData.indexOf(item)}">
+                            Rediger
+                        </button>
+                        <button class="delete-button" data-index="${filteredData.indexOf(item)}">
+                            Slet
+                        </button>
+                    </td>
+                </tr>
+                `;
+            });
+            
+            trainingDataTable.innerHTML = tableHtml;
+            
+            // Tilføj event listeners til knapperne
+            document.querySelectorAll('.edit-button').forEach(button => {
+                button.addEventListener('click', () => editTrainingItem(button.dataset.index));
+            });
+            
+            document.querySelectorAll('.delete-button').forEach(button => {
+                button.addEventListener('click', () => deleteTrainingItem(button.dataset.index));
+            });
+        }
+        
+        // Opdater pagineringskontrols
+        function updatePaginationControls() {
+            pageInfoSpan.textContent = `Side ${currentPage} af ${totalPages}`;
+            
+            prevPageButton.disabled = currentPage <= 1;
+            nextPageButton.disabled = currentPage >= totalPages;
+        }
+        
+        // Gem nyt træningseksempel
+        async function saveTrainingExample() {
+            const text = trainingTextArea.value.trim();
+            const intent = intentSelect.value;
+            
+            if (!text) {
+                showToast('Indtast venligst en tekst.', 'error');
+                return;
+            }
+            
+            if (!intent) {
+                showToast('Vælg venligst en intent.', 'error');
+                return;
+            }
+            
+            // Deaktiver knap under afsendelse
+            submitTrainingButton.disabled = true;
+            
+            try {
+                // Dette ville normalt være et API kald
+                // POST /api/nlu/train med { text, intent }
+                await new Promise(resolve => setTimeout(resolve, 800)); // Simuler netværksforsinkelse
+                
+                // Simuler tilføjelse af nyt eksempel
+                trainingData.unshift({
+                    text,
+                    intent,
+                    confidence: 0.85
+                });
+                
+                // Ryd formular
+                trainingTextArea.value = '';
+                intentSelect.value = '';
+                
+                // Vis opdateret data
+                filterAndDisplayData();
+                
+                // Opdater træningsstatus
+                examplesCountSpan.textContent = parseInt(examplesCountSpan.textContent) + 1;
+                const totalNeeded = parseInt(examplesNeededSpan.textContent);
+                const newExamples = parseInt(examplesCountSpan.textContent);
+                const percentage = Math.min(100, (newExamples / totalNeeded) * 100);
+                trainingProgressBar.style.width = `${percentage}%`;
+                
+                showToast('Træningseksempel tilføjet!', 'success');
+            } catch (error) {
+                console.error('Fejl ved lagring af træningseksempel:', error);
+                showToast('Kunne ikke gemme eksemplet. Prøv igen senere.', 'error');
+            } finally {
+                submitTrainingButton.disabled = false;
+            }
+        }
+        
+        // Gem ny intent
+        async function saveNewIntent() {
+            const intentName = newIntentNameInput.value.trim();
+            const intentDescription = newIntentDescriptionInput.value.trim();
+            
+            if (!intentName) {
+                showToast('Indtast venligst et intent navn.', 'error');
+                return;
+            }
+            
+            if (availableIntents.includes(intentName)) {
+                showToast('Intent navnet findes allerede.', 'error');
+                return;
+            }
+            
+            saveIntentButton.disabled = true;
+            
+            try {
+                // Dette ville normalt være et API kald
+                // POST /api/nlu/intent med { name, description }
+                await new Promise(resolve => setTimeout(resolve, 800)); // Simuler netværksforsinkelse
+                
+                // Tilføj intent til listen
+                availableIntents.push(intentName);
+                
+                // Opdater select elementerne
+                populateIntentSelect(intentSelect);
+                populateIntentSelect(filterIntentSelect, true);
+                
+                // Vælg den nye intent
+                intentSelect.value = intentName;
+                
+                // Luk dialog
+                hideIntentDialog();
+                
+                showToast('Ny intent oprettet!', 'success');
+            } catch (error) {
+                console.error('Fejl ved oprettelse af intent:', error);
+                showToast('Kunne ikke oprette intent. Prøv igen senere.', 'error');
+            } finally {
+                saveIntentButton.disabled = false;
+            }
+        }
+        
+        // Start gentræning
+        async function startRetraining() {
+            forceRetrainButton.disabled = true;
+            forceRetrainButton.textContent = 'Gentræner...';
+            
+            try {
+                // Dette ville normalt være et API kald til /training/force
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Simuler træning
+                
+                // Nulstil træningsstatus
+                examplesCountSpan.textContent = '0';
+                trainingProgressBar.style.width = '0%';
+                
+                showToast('Model gentrænet!', 'success');
+            } catch (error) {
+                console.error('Fejl ved gentræning:', error);
+                showToast('Kunne ikke gentræne model. Prøv igen senere.', 'error');
+            } finally {
+                forceRetrainButton.textContent = 'Tving gentræning nu';
+                forceRetrainButton.disabled = false;
+            }
+        }
+        
+        // Rediger træningseksempel
+        function editTrainingItem(index) {
+            const item = filteredData[index];
+            
+            trainingTextArea.value = item.text;
+            intentSelect.value = item.intent;
+            
+            // Scroll til toppen
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+            
+            // Markér tekstfeltet
+            trainingTextArea.focus();
+        }
+        
+        // Slet træningseksempel
+        async function deleteTrainingItem(index) {
+            if (!confirm('Er du sikker på, at du vil slette dette træningseksempel?')) {
+                return;
+            }
+            
+            const item = filteredData[index];
+            
+            try {
+                // Dette ville normalt være et API kald
+                // DELETE /api/nlu/training_item med { id }
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simuler netværksforsinkelse
+                
+                // Find og fjern elementet fra originaldata
+                const originalIndex = trainingData.findIndex(
+                    d => d.text === item.text && d.intent === item.intent
+                );
+                
+                if (originalIndex !== -1) {
+                    trainingData.splice(originalIndex, 1);
+                    filterAndDisplayData();
+                    showToast('Træningseksempel slettet.', 'success');
+                }
+            } catch (error) {
+                console.error('Fejl ved sletning af træningseksempel:', error);
+                showToast('Kunne ikke slette eksemplet. Prøv igen senere.', 'error');
+            }
+        }
+        
+        // Vis intent dialog
+        function showIntentDialog() {
+            newIntentNameInput.value = '';
+            newIntentDescriptionInput.value = '';
+            addIntentDialog.classList.add('visible');
+        }
+        
+        // Skjul intent dialog
+        function hideIntentDialog() {
+            addIntentDialog.classList.remove('visible');
+        }
+        
+        // Vis toast meddelelse
+        function showToast(message, type = 'info') {
+            // Fjern eksisterende toast
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                document.body.removeChild(existingToast);
+            }
+            
+            // Opret ny toast
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // Vis toast
+            setTimeout(() => {
+                toast.classList.add('visible');
+            }, 10);
+            
+            // Skjul toast efter et stykke tid
+            setTimeout(() => {
+                toast.classList.remove('visible');
+                setTimeout(() => {
+                    if (document.body.contains(toast)) {
+                        document.body.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Indlæs intents og træningsstatus
+            await Promise.all([loadIntents(), loadTrainingStatus(), loadTrainingData()]);
+            
+            // Tilføj event listeners
+            submitTrainingButton.addEventListener('click', saveTrainingExample);
+            addIntentButton.addEventListener('click', showIntentDialog);
+            forceRetrainButton.addEventListener('click', startRetraining);
+            
+            // Dialog knapper
+            saveIntentButton.addEventListener('click', saveNewIntent);
+            cancelIntentButton.addEventListener('click', hideIntentDialog);
+            closeDialogButton.addEventListener('click', hideIntentDialog);
+            
+            // Paginering
+            prevPageButton.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    displayPageData();
+                    updatePaginationControls();
+                }
+            });
+            
+            nextPageButton.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    displayPageData();
+                    updatePaginationControls();
+                }
+            });
+            
+            // Søgning og filtrering
+            searchDataInput.addEventListener('input', filterAndDisplayData);
+            filterIntentSelect.addEventListener('change', filterAndDisplayData);
+            
+            // Luk dialog når der klikkes udenfor
+            addIntentDialog.addEventListener('click', (e) => {
+                if (e.target === addIntentDialog) {
+                    hideIntentDialog();
+                }
+            });
+        });
+    </script>
+    
+    <style>
+        /* Trænings-specifikke styles */
+        .training-intro {
+            margin-bottom: 1.5rem;
+        }
+        
+        .training-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        
+        .training-panel, .data-panel {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+        }
+        
+        /* Formular */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .form-group textarea, .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+        }
+        
+        /* Træningsstatus */
+        .training-status {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .progress-container {
+            margin-bottom: 1rem;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--secondary-color);
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        /* Træningsdata tabel */
+        .filter-controls {
+            display: flex;
+            margin-bottom: 1rem;
+            gap: 0.5rem;
+        }
+        
+        .filter-controls select, .filter-controls input {
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        
+        .filter-controls input {
+            flex: 1;
+        }
+        
+        .training-data-container {
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+        
+        .training-data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .training-data-table th, .training-data-table td {
+            padding: 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .training-data-table th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+        }
+        
+        .training-data-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .confidence-bar {
+            height: 24px;
+            min-width: 40px;
+            text-align: center;
+            color: white;
+            font-size: 0.8rem;
+            line-height: 24px;
+            border-radius: 4px;
+        }
+        
+        .high-confidence {
+            background-color: #2ecc71;
+        }
+        
+        .medium-confidence {
+            background-color: #f39c12;
+        }
+        
+        .low-confidence {
+            background-color: #e74c3c;
+        }
+        
+        .edit-button, .delete-button {
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            border: none;
+        }
+        
+        .edit-button {
+            background-color: #3498db;
+            color: white;
+            margin-right: 0.5rem;
+        }
+        
+        .delete-button {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .loading-row td, .error-row td, .no-data-row td {
+            text-align: center;
+            padding: 2rem !important;
+        }
+        
+        .loading-row .loader {
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        
+        .error-message {
+            color: #e74c3c;
+        }
+        
+        .no-data-message {
+            color: #7f8c8d;
+        }
+        
+        /* Paginering */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 1rem;
+            gap: 1rem;
+        }
+        
+        .page-button {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            background-color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .page-button:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+        
+        /* Dialog */
+        .dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+        
+        .dialog.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .dialog-content {
+            background-color: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transform: translateY(-20px);
+            transition: transform 0.3s;
+        }
+        
+        .dialog.visible .dialog-content {
+            transform: translateY(0);
+        }
+        
+        .dialog-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .close-button {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+        
+        .dialog-body {
+            padding: 1.5rem;
+        }
+        
+        .dialog-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+        
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 4px;
+            color: white;
+            max-width: 300px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+            transform: translateX(100%);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 2000;
+        }
+        
+        .toast.visible {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        
+        .toast.success {
+            background-color: #2ecc71;
+        }
+        
+        .toast.error {
+            background-color: #e74c3c;
+        }
+        
+        .toast.info {
+            background-color: #3498db;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .training-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-actions {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .form-actions button {
+                width: 100%;
+            }
+        }
+    </style>
+</body>
+</html> 

@@ -1,27 +1,66 @@
-# runtime/cache
+# Python
 __pycache__/
-cache/
-logs/
-static/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
 venv/
-.venv/
-docs/
-*.pyc
-models/cache/
-data/speaker_models/
+ENV/
 
-# løse filer
-*.log
-best_model.pt
-Jarvis-Lite-Chat.spec
-build_exe.py
-
-# IDE filer
-.vscode/
+# IDE
 .idea/
+.vscode/
 *.swp
 *.swo
 
-# OS genererede filer
+# Logs
+*.log
+logs/
+log/
+
+# Cache
+cache/
+.cache/
+
+# Backup
+backup/
+
+# Local configuration
+.env.local
+.env.*.local
+
+# Model weights og data
+models/
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Midlertidige filer
+temp/
+tmp/
+*.tmp
+
+# System
 .DS_Store
 Thumbs.db

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis - Chat</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/main.js" defer></script>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="/static/img/jarvis-logo.png" alt="Jarvis Logo" class="logo">
+            <h1>Jarvis</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/">Hjem</a></li>
+                <li class="active"><a href="/web/chat">Chat</a></li>
+                <li><a href="/web/training">Træning</a></li>
+                <li><a href="/web/visualization">Visualisering</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="chat-container">
+            <div class="chat-header">
+                <h2>Chat med Jarvis</h2>
+                <div class="chat-controls">
+                    <button id="clear-chat" class="secondary-button">Ryd Chat</button>
+                    <div class="status-indicator-container">
+                        <span id="connection-status" class="status-dot disconnected"></span>
+                        <span>Forbindelse</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="chat-messages" class="chat-messages">
+                <div class="welcome-message">
+                    <h3>Velkommen til Jarvis</h3>
+                    <p>Jeg er din danske stemmeassistent. Du kan skrive til mig eller bruge mikrofonen til at stille spørgsmål.</p>
+                </div>
+                <!-- Chat beskeder vil blive tilføjet her dynamisk -->
+            </div>
+            
+            <div class="chat-input-container">
+                <button id="mic-button" class="mic-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="22"></line>
+                    </svg>
+                </button>
+                <input type="text" id="user-input" placeholder="Skriv din besked her..." autofocus>
+                <button id="send-button" class="primary-button">Send</button>
+            </div>
+        </section>
+        
+        <section class="info-panel">
+            <div class="module-status-container">
+                <h3>Aktive Moduler</h3>
+                <div id="active-modules" class="active-modules">
+                    <div class="loader"></div>
+                    <p>Indlæser moduler...</p>
+                </div>
+            </div>
+            
+            <div class="nlu-status-container">
+                <h3>NLU Status</h3>
+                <div class="nlu-info">
+                    <div class="nlu-confidence">
+                        <span>Seneste confidence: </span>
+                        <span id="nlu-confidence-value">N/A</span>
+                    </div>
+                    <div class="nlu-intent">
+                        <span>Detekteret intent: </span>
+                        <span id="nlu-intent-value">N/A</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Jarvis &copy; 2023 - Modulær dansk stemmeassistent</p>
+    </footer>
+
+    <script>
+        // DOM referencer
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const micButton = document.getElementById('mic-button');
+        const clearChatButton = document.getElementById('clear-chat');
+        const connectionStatus = document.getElementById('connection-status');
+        const activeModulesContainer = document.getElementById('active-modules');
+        const nluConfidenceValue = document.getElementById('nlu-confidence-value');
+        const nluIntentValue = document.getElementById('nlu-intent-value');
+
+        // Tilføj chat besked
+        function addChatMessage(message, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${isUser ? 'user-message' : 'assistant-message'}`;
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'chat-bubble';
+            bubbleDiv.textContent = message;
+            
+            messageDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            // Scroll til bunden
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Send besked
+        function sendUserMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+            
+            // Tilføj brugerens besked til chat
+            addChatMessage(message, true);
+            
+            // Ryd inputfeltet
+            userInput.value = '';
+            
+            // Send besked via WebSocket
+            sendMessage({
+                type: 'chat_message',
+                content: message
+            });
+            
+            // Vis "tænker" indikator
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.className = 'thinking-indicator';
+            thinkingDiv.innerHTML = '<span>.</span><span>.</span><span>.</span>';
+            chatMessages.appendChild(thinkingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Håndter WebSocket besked-opdatering
+        function handleResponse(message) {
+            // Fjern "tænker" indikator
+            const thinkingIndicator = document.querySelector('.thinking-indicator');
+            if (thinkingIndicator) {
+                chatMessages.removeChild(thinkingIndicator);
+            }
+            
+            // Tilføj svaret
+            addChatMessage(message);
+        }
+        
+        // Opdater forbindelsesstatus
+        function updateConnectionStatus(connected) {
+            connectionStatus.className = `status-dot ${connected ? 'connected' : 'disconnected'}`;
+        }
+
+        // Opdater modul status
+        function updateModuleStatus(modules) {
+            activeModulesContainer.innerHTML = '';
+            
+            if (!modules || modules.length === 0) {
+                activeModulesContainer.innerHTML = '<p>Ingen moduler aktive</p>';
+                return;
+            }
+            
+            modules.forEach(moduleName => {
+                const moduleDiv = document.createElement('div');
+                moduleDiv.className = 'active-module-item';
+                moduleDiv.innerHTML = `<span class="status-dot connected"></span> ${moduleName}`;
+                activeModulesContainer.appendChild(moduleDiv);
+            });
+        }
+        
+        // Opdater NLU information
+        function updateNluInfo(intent, confidence) {
+            nluIntentValue.textContent = intent || 'N/A';
+            nluConfidenceValue.textContent = confidence ? `${Math.round(confidence * 100)}%` : 'N/A';
+        }
+        
+        // Håndter WebSocket status besked
+        function updateStatus(status) {
+            if (status.modules) {
+                updateModuleStatus(status.modules);
+            }
+            
+            updateConnectionStatus(true);
+        }
+
+        // Overskriv standard handleResponse funktion fra main.js
+        window.handleResponse = function(data) {
+            if (typeof data === 'string') {
+                handleResponse(data);
+            } else if (data.message) {
+                handleResponse(data.message);
+                
+                if (data.nlu_data) {
+                    updateNluInfo(data.nlu_data.intent, data.nlu_data.confidence);
+                }
+            }
+        };
+        
+        // Overskriv standard updateStatus funktion fra main.js
+        window.updateStatus = updateStatus;
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Send besked når der trykkes på send-knappen
+            sendButton.addEventListener('click', sendUserMessage);
+            
+            // Send besked når der trykkes Enter i inputfeltet
+            userInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    sendUserMessage();
+                }
+            });
+            
+            // Håndter mikrofon-knap
+            let isRecording = false;
+            micButton.addEventListener('click', () => {
+                if (isRecording) {
+                    micButton.classList.remove('recording');
+                } else {
+                    micButton.classList.add('recording');
+                    // Her ville vi starte optagelse med WebAudio API
+                    // For nu simulerer vi det
+                    setTimeout(() => {
+                        micButton.classList.remove('recording');
+                        userInput.value = "Hvad kan du hjælpe mig med i dag?";
+                        isRecording = false;
+                    }, 3000);
+                }
+                isRecording = !isRecording;
+            });
+            
+            // Ryd chat
+            clearChatButton.addEventListener('click', () => {
+                chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <h3>Velkommen til Jarvis</h3>
+                        <p>Jeg er din danske stemmeassistent. Du kan skrive til mig eller bruge mikrofonen til at stille spørgsmål.</p>
+                    </div>
+                `;
+            });
+            
+            // Tilføj velkomstbesked efter en kort forsinkelse
+            setTimeout(() => {
+                addChatMessage("Hej! Jeg er Jarvis, din danske stemmeassistent. Hvordan kan jeg hjælpe dig i dag?");
+            }, 500);
+        });
+    </script>
+    
+    <style>
+        /* Chat-specifikke styles */
+        .chat-container {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            height: 60vh;
+        }
+        
+        .chat-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .secondary-button {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .status-indicator-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.connected {
+            background-color: #2ecc71;
+            box-shadow: 0 0 5px #2ecc71;
+        }
+        
+        .status-dot.disconnected {
+            background-color: #e74c3c;
+            box-shadow: 0 0 5px #e74c3c;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        
+        .welcome-message {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background-color: rgba(52, 152, 219, 0.1);
+            border-radius: 8px;
+        }
+        
+        .welcome-message h3 {
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+        
+        .chat-message {
+            margin-bottom: 1rem;
+            display: flex;
+        }
+        
+        .user-message {
+            justify-content: flex-end;
+        }
+        
+        .chat-bubble {
+            padding: 0.8rem 1.2rem;
+            border-radius: 18px;
+            max-width: 70%;
+            word-break: break-word;
+        }
+        
+        .user-message .chat-bubble {
+            background-color: var(--primary-color);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .assistant-message .chat-bubble {
+            background-color: #f1f1f1;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .thinking-indicator {
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .thinking-indicator span {
+            animation: thinking 1s infinite;
+            display: inline-block;
+            margin-right: 2px;
+        }
+        
+        .thinking-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .thinking-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes thinking {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 1; }
+        }
+        
+        .chat-input-container {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        #user-input {
+            flex: 1;
+            padding: 0.8rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        
+        .mic-button {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .mic-button.recording {
+            background-color: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Info panel */
+        .info-panel {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+        }
+        
+        .module-status-container, .nlu-status-container {
+            margin-bottom: 1.5rem;
+        }
+        
+        .active-modules {
+            margin-top: 1rem;
+        }
+        
+        .active-module-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .nlu-info {
+            background-color: var(--background);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .nlu-confidence, .nlu-intent {
+            margin-bottom: 0.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .chat-container {
+                height: 70vh;
+            }
+            
+            .chat-message .chat-bubble {
+                max-width: 85%;
+            }
+        }
+    </style>
+</body>
+</html> 

@@ -13,8 +13,9 @@ import threading
 import signal
 import atexit
 import socket
+import argparse
 import requests
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any, List
 import psutil
 from pathlib import Path
 
@@ -25,7 +26,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s [%(levelname)s] - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
-        logging.FileHandler(log_file),
+        logging.FileHandler(log_file, encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -36,7 +37,7 @@ processes = []
 DEFAULT_PORT = 8000
 MAX_PORT_ATTEMPTS = 5
 HEALTH_CHECK_INTERVAL = 5  # sekunder
-STARTUP_TIMEOUT = 30  # sekunder
+STARTUP_TIMEOUT = 120  # sekunder
 
 def is_port_available(port: int) -> bool:
     """Tjekker om en port er tilgængelig"""
@@ -68,7 +69,8 @@ def check_and_install_dependencies() -> Tuple[bool, str]:
         'numpy',
         'nltk',
         'python-multipart',
-        'pydantic'
+        'pydantic',
+        'accelerate'  # Tilføjet accelerate som er nødvendig for device_map
     ]
     missing = []
     
@@ -81,10 +83,17 @@ def check_and_install_dependencies() -> Tuple[bool, str]:
     if missing:
         logger.info(f"Installerer manglende packages: {', '.join(missing)}")
         try:
-            import subprocess
             for package in missing:
                 logger.info(f"Installerer {package}...")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+                # Brug encoding og errors parameter for at undgå codec-fejl
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", package],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace"
+                )
             
             # Særlig håndtering for nltk data
             if 'nltk' in missing:
@@ -116,7 +125,7 @@ def kill_process_on_port(port: int) -> None:
     for proc in psutil.process_iter(['pid', 'name', 'connections']):
         try:
             for conn in proc.connections():
-                if conn.laddr.port == port:
+                if hasattr(conn, 'laddr') and hasattr(conn.laddr, 'port') and conn.laddr.port == port:
                     proc.terminate()
                     proc.wait(timeout=3)
                     logger.info(f"Afsluttede proces på port {port}")
@@ -124,7 +133,45 @@ def kill_process_on_port(port: int) -> None:
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
             continue
 
-def launch_server() -> Tuple[Optional[subprocess.Popen], int]:
+def parse_args() -> Dict[str, Any]:
+    """Parse command line argumenter og returner en dictionary med værdier"""
+    parser = argparse.ArgumentParser(description="Start Jarvis med konfigurerede indstillinger")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port for API server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host for API server")
+    parser.add_argument("--model", type=str, default="facebook/opt-125m", help="LLM model navn")
+    parser.add_argument("--device", type=str, default="cpu", help="Device for model (cpu eller cuda)")
+    parser.add_argument("--offline", action="store_true", help="Kør uden LLM (offline mode)")
+    parser.add_argument("--no-browser", action="store_true", help="Start ikke browser automatisk")
+    
+    return vars(parser.parse_args())
+
+def build_api_command(api_server_path: Path, port: int, cli_args: Dict[str, Any]) -> List[str]:
+    """Opbygger kommandoen til at starte API-serveren med alle argumenter"""
+    cmd = [
+        sys.executable,
+        str(api_server_path),
+        "--port", str(port)
+    ]
+    
+    # Tilføj model hvis angivet
+    if "model" in cli_args:
+        cmd.extend(["--model", cli_args["model"]])
+    
+    # Tilføj device hvis angivet
+    if "device" in cli_args:
+        cmd.extend(["--device", cli_args["device"]])
+    
+    # Tilføj offline mode hvis aktiveret
+    if cli_args.get("offline", False):
+        cmd.append("--offline")
+    
+    # Tilføj host hvis angivet
+    if "host" in cli_args and cli_args["host"] != "0.0.0.0":
+        cmd.extend(["--host", cli_args["host"]])
+        
+    return cmd
+
+def launch_server(cli_args: Dict[str, Any]) -> Tuple[Optional[subprocess.Popen], int]:
     """Starter Jarvis-Lite API-server"""
     # Tjek virtual environment
     if not check_virtual_env():
@@ -138,29 +185,26 @@ def launch_server() -> Tuple[Optional[subprocess.Popen], int]:
         logger.info(deps_msg)
     
     # Find ledig port
-    port = find_available_port()
+    port = cli_args.get("port", DEFAULT_PORT)
     if not is_port_available(port):
         kill_process_on_port(port)
         if not is_port_available(port):
-            raise RuntimeError(f"Kunne ikke frigøre port {port}")
+            port = find_available_port(port + 1)
+            logger.info(f"Port {cli_args.get('port')} ikke tilgængelig, bruger port {port} i stedet")
     
     logger.info(f"Starter Jarvis-Lite på port {port}...")
     
-    # Få den absolutte sti til src-mappen og api_server.py
+    # Få den absolutte sti til api_server.py
     current_dir = Path(__file__).resolve().parent
-    api_server_path = current_dir / "src" / "web" / "api_server.py"
+    api_server_path = current_dir / "api_server.py"
     
     if not api_server_path.exists():
         raise RuntimeError(f"Kunne ikke finde api_server.py på stien: {api_server_path}")
     
-    # Start API-server med port parameter
-    api_cmd = [
-        sys.executable,
-        str(api_server_path),
-        "--port", str(port)
-    ]
+    # Byg kommandoen med alle argumenter
+    api_cmd = build_api_command(api_server_path, port, cli_args)
     
-    # Opret log filer
+    # Opret log filer med korrekt encoding
     stdout_log = open("api_server_out.log", "w", encoding="utf-8")
     stderr_log = open("api_server_err.log", "w", encoding="utf-8")
     
@@ -169,6 +213,7 @@ def launch_server() -> Tuple[Optional[subprocess.Popen], int]:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(current_dir)
         
+        # Start processen med korrekt encoding
         api_process = subprocess.Popen(
             api_cmd,
             stdout=stdout_log,
@@ -185,9 +230,9 @@ def launch_server() -> Tuple[Optional[subprocess.Popen], int]:
                 stdout_log.close()
                 stderr_log.close()
                 
-                with open("api_server_out.log", "r", encoding="utf-8") as f:
+                with open("api_server_out.log", "r", encoding="utf-8", errors="replace") as f:
                     stdout = f.read()
-                with open("api_server_err.log", "r", encoding="utf-8") as f:
+                with open("api_server_err.log", "r", encoding="utf-8", errors="replace") as f:
                     stderr = f.read()
                     
                 logger.error(f"API server stoppede uventet. Stdout:\n{stdout}\nStderr:\n{stderr}")
@@ -202,9 +247,9 @@ def launch_server() -> Tuple[Optional[subprocess.Popen], int]:
         stdout_log.close()
         stderr_log.close()
         
-        with open("api_server_out.log", "r", encoding="utf-8") as f:
+        with open("api_server_out.log", "r", encoding="utf-8", errors="replace") as f:
             stdout = f.read()
-        with open("api_server_err.log", "r", encoding="utf-8") as f:
+        with open("api_server_err.log", "r", encoding="utf-8", errors="replace") as f:
             stderr = f.read()
             
         logger.error(f"API server timeout. Stdout:\n{stdout}\nStderr:\n{stderr}")
@@ -215,11 +260,11 @@ def launch_server() -> Tuple[Optional[subprocess.Popen], int]:
     except Exception as e:
         stdout_log.close()
         stderr_log.close()
-        if api_process and api_process.poll() is None:
+        if 'api_process' in locals() and api_process and api_process.poll() is None:
             api_process.terminate()
         raise RuntimeError(f"Fejl under opstart af server: {str(e)}")
 
-def monitor_process(api_process: subprocess.Popen, port: int) -> None:
+def monitor_process(api_process: subprocess.Popen, port: int, cli_args: Dict[str, Any]) -> None:
     """Overvåger serverprocessen og genstarter den om nødvendigt"""
     consecutive_failures = 0
     max_failures = 3
@@ -248,7 +293,7 @@ def monitor_process(api_process: subprocess.Popen, port: int) -> None:
                 logger.critical(f"For mange fejl ({consecutive_failures}). Genstarter komplet...")
                 cleanup()
                 try:
-                    api_process, port = launch_server()
+                    api_process, port = launch_server(cli_args)
                     consecutive_failures = 0
                 except Exception as restart_error:
                     logger.critical(f"Kunne ikke genstarte server: {restart_error}")
@@ -281,6 +326,9 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
+    # Parse command line argumenter
+    cli_args = parse_args()
+    
     try:
         # Tjek om virtual environment er aktiveret
         if not check_virtual_env():
@@ -291,16 +339,17 @@ if __name__ == "__main__":
             sys.exit(1)
         
         # Start server
-        api_process, port = launch_server()
+        api_process, port = launch_server(cli_args)
         
-        # Åbn browser
-        webbrowser.open(f"http://localhost:{port}")
-        logger.info("Browser åbnet med Jarvis-Lite UI")
+        # Åbn browser medmindre det er fravalgt
+        if not cli_args.get("no_browser", False):
+            webbrowser.open(f"http://localhost:{port}")
+            logger.info("Browser åbnet med Jarvis-Lite UI")
         
         # Start monitoring
         monitor_thread = threading.Thread(
             target=monitor_process,
-            args=(api_process, port),
+            args=(api_process, port, cli_args),
             daemon=True
         )
         monitor_thread.start()

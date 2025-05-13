@@ -131,12 +131,12 @@ class JarvisDevEnvironment:
         logger.info("Reloading services...")
         python = sys.executable
         
-        # Genstart API server
-        api_cmd = [python, "src/web/api_server.py"]
+        # Genstart API server med korrekt sti
+        api_cmd = [python, "api_server.py"]
         self.restart_service("API Server", api_cmd)
         
-        # Genstart Jarvis main
-        main_cmd = [python, "src/jarvis_main.py"]
+        # Genstart Jarvis main med korrekt sti
+        main_cmd = [python, "jarvis_main.py"]
         self.restart_service("Jarvis Main", main_cmd)
     
     def monitor_resources(self):
@@ -165,11 +165,11 @@ class JarvisDevEnvironment:
             if self.config["development"]["auto_reload"]:
                 self.setup_file_watcher()
             
-            # Start services
+            # Start services med korrekte stier
             python = sys.executable
-            self.start_service("API Server", [python, "src/web/api_server.py"])
+            self.start_service("API Server", [python, "api_server.py"])
             time.sleep(2)  # Vent på API server
-            self.start_service("Jarvis Main", [python, "src/jarvis_main.py"])
+            self.start_service("Jarvis Main", [python, "jarvis_main.py"])
             
             # Hovedloop med live UI
             with Live(self.layout, refresh_per_second=1) as live:
