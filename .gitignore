@@ -233,4 +233,47 @@ logs/*.log
 
 # Eksplicitet inkluder .cursor mapper for synkronisering
 !.cursor/
-!.cursor/**/* 
+!.cursor/**/*
+
+# Virtuelle miljøer
+.venv/
+venv/
+
+# Cache og logs
+__pycache__/
+*.py[cod]
+logs/
+*.log
+
+# Build og dist
+dist/
+build/
+*.spec
+
+# IDE
+.vscode/
+.cursor/
+
+# Store filer
+models/*.pt
+models/*.bin
+models/*.h5
+
+# Midlertidige filer
+*.tmp
+*.bak
+
+# Node modules (hvis vi bruger npm)
+node_modules/
+
+# Miljøvariabler
+.env
+.env.*
+
+# Database filer
+*.db
+*.sqlite3
+
+# OS-specifikke filer
+.DS_Store
+Thumbs.db 
