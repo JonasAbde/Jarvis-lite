@@ -5,10 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jarvis-Lite | Dansk AI-assistent</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="static/style.css">
+    <link rel="stylesheet" href="/static/css/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // Tjek om vi er på den korrekte port (8009)
+        if (window.location.port && window.location.port !== '8009') {
+            // Omdirigér til korrekt port
+            const newUrl = window.location.protocol + '//' + window.location.hostname + ':8009' + window.location.pathname;
+            console.log('Omdirigerer til korrekt port:', newUrl);
+            window.location.href = newUrl;
+        }
+    </script>
+    <script src="/static/js/main.js" defer></script>
+    <script src="/static/app.js" defer></script>
     <style>
         :root {
             --primary-color: #3b82f6;
@@ -113,7 +124,7 @@
         <!-- Header -->
         <header class="flex items-center justify-between mb-6">
             <div class="flex items-center">
-                <img src="jarvis-logo.png" alt="Jarvis-Lite Logo" class="h-10 w-10 mr-3" onerror="this.src='static/placeholder-logo.png'">
+                <img src="/static/img/jarvis-logo.png" alt="Jarvis-Lite Logo" class="h-10 w-10 mr-3" onerror="this.src='/static/img/placeholder-logo.png'">
                 <h1 class="text-2xl font-bold text-gray-800">Jarvis-Lite</h1>
             </div>
             <div class="flex items-center">
@@ -197,6 +208,6 @@
         <button id="clear-history-btn" class="w-full mt-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Ryd Chat</button>
     </div>
 
-    <script src="static/app.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html> 

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis - Din Danske Assistent</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/png" href="/static/jarvis-logo.png">
+    <!-- Tilføj moderne fonte -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Ekstra inline styles for forbedret design */
+        :root {
+            --primary-color: #3E64FF;
+            --secondary-color: #5A78FF;
+            --bg-color: #F5F8FF;
+            --text-color: #333;
+            --chat-bg: #fff;
+            --user-bubble: #3E64FF;
+            --assistant-bubble: #F0F4FF;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-color);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            padding: 1rem;
+            color: white;
+            display: flex;
+            align-items: center;
+            border-radius: 10px 10px 0 0;
+        }
+        
+        .chat-container {
+            max-width: 900px;
+            margin: 2rem auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            background: var(--chat-bg);
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .status-indicator {
+            height: 10px;
+            width: 10px;
+            border-radius: 50%;
+            background-color: #ff5252;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.connected {
+            background-color: #4caf50;
+        }
+        
+        .status-text {
+            font-size: 0.9rem;
+            margin-left: 5px;
+        }
+        
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        
+        .input-container {
+            display: flex;
+            padding: 1rem;
+            background-color: #fafafa;
+            border-top: 1px solid #eee;
+        }
+        
+        #message-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 24px;
+            outline: none;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        #message-input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(62, 100, 255, 0.1);
+        }
+        
+        #send-button {
+            margin-left: 10px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            width: 44px;
+            height: 44px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        #send-button:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+        
+        .assistant-message {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+        
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 18px;
+            margin-bottom: 4px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        
+        .user-bubble {
+            background-color: var(--user-bubble);
+            color: white;
+            border-radius: 18px 18px 0 18px;
+        }
+        
+        .assistant-bubble {
+            background-color: var(--assistant-bubble);
+            color: var(--text-color);
+            border-radius: 18px 18px 18px 0;
+        }
+        
+        .logo {
+            width: 36px;
+            height: 36px;
+            margin-right: 10px;
+        }
+        
+        .typing-indicator {
+            padding: 12px 16px;
+            background-color: var(--assistant-bubble);
+            border-radius: 18px;
+            display: inline-block;
+            margin-bottom: 10px;
+            align-self: flex-start;
+        }
+        
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: #888;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 1px;
+            animation: typing 1s infinite;
+        }
+        
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typing {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0); }
+        }
+        
+        /* Responsivt design */
+        @media (max-width: 768px) {
+            .chat-container {
+                margin: 0;
+                height: 100vh;
+                border-radius: 0;
+            }
+            
+            .header {
+                border-radius: 0;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <img src="/static/jarvis-logo.png" alt="Jarvis Logo" class="logo">
+            <h1>Jarvis</h1>
+            <div class="status-container">
+                <div class="status-indicator" id="status-indicator"></div>
+                <span class="status-text" id="status-text">Forbinder...</span>
+            </div>
+        </div>
+        
+        <div id="chat-messages"></div>
+        
+        <div class="input-container">
+            <input type="text" id="message-input" placeholder="Skriv en besked..." autofocus>
+            <button id="send-button" aria-label="Send besked">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Tjek om vi er på den korrekte port (8080)
+        if (window.location.port && window.location.port !== '8080') {
+            // Omdirigér til korrekt port
+            const newUrl = window.location.protocol + '//' + window.location.hostname + ':8080' + window.location.pathname;
+            console.log('Omdirigerer til korrekt port:', newUrl);
+            window.location.href = newUrl;
+        }
+    </script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html> 

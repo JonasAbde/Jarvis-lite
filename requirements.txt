@@ -29,6 +29,8 @@ pygame>=2.6.1
 # Text-to-Speech
 gtts>=2.5.0
 playsound>=1.2.2
+elevenlabs>=0.2.27  # Opdateret til korrekt version
+websockets>=12.0
 
 # Utilities
 tqdm>=4.65.0

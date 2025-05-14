@@ -1,21 +1,66 @@
-# Jarvis-lite
+# Jarvis-Lite
 
-En dansk offline stemmeassistent.
+En lettvægtsversion af Jarvis, en dansk stemmeassistent med fokus på dansk sprog.
 
-## Installation
+## Status opdatering - 14/05/2025
 
-1. Opret et virtuelt miljø:
-```bash
-python -m venv .venv
+### Hvad vi har implementeret:
+1. **Chat interface**
+   - Moderne og responsivt UI med chat-bobler
+   - WebSocket forbindelse til real-time kommunikation
+   - "Skriver" indikator når assistenten forbereder svar
+   - Automatisk scrolling og beskedhåndtering
+
+2. **Backend integration**
+   - FastAPI server med WebSocket support
+   - ElevenLabs integration til tekst-til-tale
+   - Fallback mode når core moduler ikke er tilgængelige
+   - Robust fejlhåndtering og reconnect logik
+
+3. **Brugeroplevelse**
+   - Statusindikator der viser forbindelsesstatus
+   - Audio afspilning af svar
+   - Visuelle forbedringer og animationer
+
+### Hvad der mangler:
+1. **Core Jarvis integration**
+   - Integration med de primære Jarvis NLP moduler
+   - Adgang til trænet model for bedre svarevne
+
+2. **Funktionalitet**
+   - Mikrofon input og tale-genkendelse
+   - Træningsside funktionalitet (NLU træning)
+   - Visualiseringssiden
+
+3. **Ekstra funktioner**
+   - Gemme samtalehistorik
+   - Brugerautentifikation og profiler
+   - Integration med eksterne tjenester (vejr, nyheder, m.m.)
+
+## Installation og kørsel
+
+1. Klargør miljø:
+   ```
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Start serveren:
+   ```
+   cd src/modules/tutorial_integration/
+   python api_server.py
+   ```
+
+3. Åbn browseren på:
+   ```
+   http://localhost:8080
+   ```
+
+## Miljøvariabler
+For ElevenLabs integration:
 ```
-
-2. Aktivér miljøet:
-- Windows: `.venv\Scripts\activate`
-- Linux/Mac: `source .venv/bin/activate`
-
-3. Installér afhængigheder:
-```bash
-pip install -r requirements.txt
+ELEVENLABS_API_KEY=dit_api_key_her
 ```
 
 ## Konfiguration

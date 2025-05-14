@@ -1,10 +1,10 @@
 // Jarvis-Lite Chat UI - App.js
 
 // Konfiguration
-const API_URL = 'http://localhost:8000';
+const API_URL = window.location.origin;
 const ENDPOINTS = {
-    status: `${API_URL}/status`,
-    listenToggle: `${API_URL}/command/listen_toggle`,
+    status: `${API_URL}/api/status`,
+    listenToggle: `${API_URL}/api/listen_toggle`,
     sendChat: `${API_URL}/api/chat/send`,
     history: `${API_URL}/api/chat/history`,
     clearHistory: `${API_URL}/api/chat/clear_history`
@@ -30,13 +30,20 @@ const typingIndicator = document.getElementById('typing-indicator');
 // State
 let isRecording = false;
 let isListening = false;
-let isDarkMode = false;
+let isDarkMode = localStorage.getItem('darkMode') === 'true';
 let wsConnection = null;
 let wsConnected = false;
 let selectedVoice = localStorage.getItem('selectedVoice') || 'david';
 let statusCheckInterval = null;
 let lastStatusCheck = 0;
 let recognitionInstance = null;
+
+// WebSocket forbindelse
+let ws = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let reconnectTimer = null;
+const RECONNECT_DELAY = 3000;
 
 // Hjælpefunktioner
 function debounce(func, wait) {
@@ -515,4 +522,216 @@ function setupEventListeners() {
             settingsPanel.classList.remove('visible');
         }, 300));
     }
+}
+
+// Initialiser WebSocket forbindelse
+function initWebSocket() {
+    // Ryd eventuelle tidligere forbindelser
+    if (ws) {
+        ws.close();
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log('WebSocket forbindelse åbnet');
+        updateStatus('Forbundet', 'bg-green-400');
+        
+        // Ryd reconnect timer hvis den kører
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+    };
+    
+    ws.onclose = () => {
+        console.log('WebSocket forbindelse lukket');
+        updateStatus('Afbrudt - Genopretter...', 'bg-red-400');
+        
+        // Forsøg at genforbinde efter et kort delay
+        reconnectTimer = setTimeout(() => {
+            console.log('Forsøger at genforbinde...');
+            initWebSocket();
+        }, RECONNECT_DELAY);
+    };
+    
+    ws.onerror = (error) => {
+        console.error('WebSocket fejl:', error);
+        showError('Der opstod en fejl i forbindelsen');
+    };
+    
+    ws.onmessage = handleWebSocketMessage;
+}
+
+// Håndter indkommende WebSocket beskeder
+async function handleWebSocketMessage(event) {
+    try {
+        const data = JSON.parse(event.data);
+        console.log('Modtaget:', data);
+        
+        switch(data.type) {
+            case 'welcome':
+                addChatMessage(data.message, 'assistant');
+                break;
+                
+            case 'response':
+                typingIndicator.style.display = 'none';
+                
+                if (data.text) {
+                    addChatMessage(data.text, 'assistant');
+                }
+                
+                if (data.audio) {
+                    const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
+                    await audio.play();
+                }
+                break;
+                
+            case 'speech_recognition':
+                if (data.text) {
+                    userInput.value = data.text;
+                    sendMessage();
+                }
+                break;
+                
+            case 'error':
+                showError(data.message);
+                break;
+                
+            case 'status':
+                updateStatus(
+                    data.connected ? 'Forbundet' : 'Afbrudt',
+                    data.connected ? 'bg-green-400' : 'bg-red-400'
+                );
+                break;
+        }
+    } catch (error) {
+        console.error('Fejl ved behandling af besked:', error);
+        showError('Der opstod en fejl ved behandling af svaret');
+    }
+}
+
+// Tilføj besked til chat
+function addChatMessage(message, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message mb-4 ${
+        sender === 'user' ? 'text-right' : 'text-left'
+    }`;
+    
+    const bubble = document.createElement('div');
+    bubble.className = `inline-block p-3 rounded-lg ${
+        sender === 'user' 
+            ? 'bg-blue-500 text-white' 
+            : 'bg-gray-700 text-white'
+    }`;
+    bubble.textContent = message;
+    
+    messageDiv.appendChild(bubble);
+    chatContainer.appendChild(messageDiv);
+    
+    // Scroll til bunden
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+// Send besked
+async function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    // Vis brugerens besked
+    addChatMessage(text, 'user');
+    
+    // Vis "skriver" indikator
+    typingIndicator.style.display = 'block';
+    
+    // Send besked til server
+    ws.send(JSON.stringify({
+        type: 'chat',
+        text: text
+    }));
+    
+    // Ryd input
+    userInput.value = '';
+}
+
+// Start/stop stemmeoptagelse
+async function toggleRecording() {
+    if (!isRecording) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            const audioChunks = [];
+            
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
+            
+            mediaRecorder.onstop = async () => {
+                // Stop alle spor i stream
+                stream.getTracks().forEach(track => track.stop());
+                
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                
+                // Send direkte til WebSocket
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'speech',
+                        audio: await blobToBase64(audioBlob)
+                    }));
+                } else {
+                    showError('Ingen forbindelse til serveren');
+                }
+            };
+            
+            mediaRecorder.start();
+            voiceButton.classList.add('recording');
+            isRecording = true;
+            
+        } catch (error) {
+            console.error('Mikrofon fejl:', error);
+            showError('Kunne ikke starte lydoptagelse. Tjek om mikrofonen er tilgængelig.');
+        }
+    } else {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+        voiceButton.classList.remove('recording');
+        isRecording = false;
+    }
+}
+
+// Hjælpefunktion til at konvertere blob til base64
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+// Opdater status indikator
+function updateStatus(text, colorClass) {
+    statusText.textContent = text;
+    statusIndicator.className = `inline-block w-2 h-2 rounded-full ${colorClass}`;
+}
+
+// Vis fejlbesked
+function showError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded shadow-lg';
+    errorDiv.textContent = message;
+    document.body.appendChild(errorDiv);
+    
+    setTimeout(() => {
+        errorDiv.style.opacity = '0';
+        errorDiv.style.transition = 'opacity 0.5s ease';
+        setTimeout(() => errorDiv.remove(), 500);
+    }, 5000);
 } 

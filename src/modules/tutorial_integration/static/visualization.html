@@ -5,13 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jarvis - Visualisering</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <script>
+        // Tjek om vi er på den korrekte port (8009)
+        if (window.location.port && window.location.port !== '8009') {
+            // Omdirigér til korrekt port
+            const newUrl = window.location.protocol + '//' + window.location.hostname + ':8009' + window.location.pathname;
+            console.log('Omdirigerer til korrekt port:', newUrl);
+            window.location.href = newUrl;
+        }
+    </script>
     <script src="/static/js/main.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 </head>
 <body>
     <header>
         <div class="logo-container">
-            <img src="/static/img/jarvis-logo.png" alt="Jarvis Logo" class="logo">
+            <img src="/static/jarvis-logo.png" alt="Jarvis Logo" class="logo">
             <h1>Jarvis</h1>
         </div>
         <nav>
